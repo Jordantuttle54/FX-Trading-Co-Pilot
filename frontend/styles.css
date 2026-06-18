@@ -298,23 +298,190 @@ th, td { border-bottom: 1px solid rgba(255,255,255,.08); padding: 10px 8px; text
 #dashboard .grid2:nth-of-type(3) .card:last-child { max-height: 820px; overflow: auto; }
 #pairs .card { min-height: 260px; }
 
-@media (min-width: 1180px) {
-  #dashboard { grid-template-columns: repeat(12, minmax(0, 1fr)); }
-  #dashboard > * { grid-column: 1 / -1; }
-  #dashboard > .grid2 { grid-column: 1 / -1; }
-  #dashboard > .grid2:nth-of-type(2) { align-items: stretch; }
+/* Workstation UX v6 */
+@media (min-width: 1120px) {
+  header { max-width: 1540px; padding-bottom: 10px; }
+  main {
+    max-width: 1540px;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .tabs {
+    grid-column: 1;
+    position: sticky;
+    top: 18px;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 14px;
+    border-radius: 28px;
+    min-height: calc(100vh - 44px);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03)),
+      rgba(5,12,22,.84);
+  }
+  .tabs::before {
+    content: "COMMAND CENTRE";
+    display: block;
+    color: var(--gold2);
+    font-size: 12px;
+    font-weight: 950;
+    letter-spacing: .16em;
+    padding: 8px 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,.10);
+    margin-bottom: 8px;
+  }
+  .tabs::after {
+    content: "Strict 85+ gate · Paper mode · Manual review";
+    margin-top: auto;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+    border-top: 1px solid rgba(255,255,255,.10);
+    padding: 14px 8px 4px;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    min-height: 50px;
+    border-radius: 17px;
+    padding: 13px 14px;
+    gap: 10px;
+  }
+  .tab::before {
+    width: 30px;
+    height: 30px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.10);
+    color: var(--gold2);
+    font-size: 13px;
+    flex: 0 0 30px;
+  }
+  .tab[data-tab="dashboard"]::before { content: "01"; }
+  .tab[data-tab="scanner"]::before { content: "02"; }
+  .tab[data-tab="risk"]::before { content: "03"; }
+  .tab[data-tab="journal"]::before { content: "04"; }
+  .tab[data-tab="paper"]::before { content: "05"; }
+  .tab[data-tab="automation"]::before { content: "06"; }
+  .tab.active::before { background: rgba(10,13,19,.20); color: #111; border-color: rgba(0,0,0,.14); }
+  .section.active, .footer {
+    grid-column: 2;
+  }
+  .section.active::before {
+    display: block;
+    grid-column: 1 / -1;
+    margin-bottom: 16px;
+    padding: 18px 20px;
+    border-radius: 24px;
+    border: 1px solid rgba(212,175,55,.22);
+    background:
+      radial-gradient(circle at 0% 0%, rgba(212,175,55,.18), transparent 34%),
+      linear-gradient(135deg, rgba(255,255,255,.07), rgba(255,255,255,.025));
+    color: var(--soft);
+    box-shadow: var(--shadow-soft);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  #dashboard.active::before { content: "Mission Control / market status, permissions, news guard and watchlist"; }
+  #scanner.active::before { content: "Setup Scanner / score only planned trades through the 85+ confidence gate"; }
+  #risk.active::before { content: "Risk Desk / position sizing, stop distance, exposure and R profile"; }
+  #journal.active::before { content: "Trade Journal / performance review, lessons and behavioural control"; }
+  #paper.active::before { content: "Paper Trading / simulated trade log and practice controls"; }
+  #automation.active::before { content: "Automation Gate / evidence threshold before any future automation work"; }
+
+  #dashboard.active {
+    display: grid !important;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 18px;
+  }
+  #dashboard > #freshnessBar { grid-column: 1 / -1; }
+  #dashboard > #controlCards { grid-column: 1 / -1; }
+  #dashboard > #decisionBar { grid-column: 1 / -1; }
+  #dashboard > #newsGuardPanel { grid-column: 1 / -1; }
+  #dashboard > .grid2:nth-of-type(1) { grid-column: 1 / -1; }
+  #dashboard > .grid2:nth-of-type(2) { grid-column: 1 / -1; }
+  #dashboard > .card:nth-of-type(2) { grid-column: 1 / -1; }
+  #dashboard > .grid2:nth-of-type(3) { grid-column: 1 / -1; }
+
+  #scanner.active .grid2,
+  #risk.active .grid2,
+  #journal.active .grid2,
+  #paper.active .grid2,
+  #automation.active .grid2 {
+    grid-template-columns: minmax(360px, .82fr) minmax(520px, 1.18fr);
+    align-items: stretch;
+  }
+
+  #scanner.active .card,
+  #risk.active .card,
+  #journal.active .card,
+  #paper.active .card,
+  #automation.active .card {
+    min-height: 260px;
+  }
 }
 
-@media (max-width: 1050px) {
+.hero .card:first-child {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-color: rgba(212,175,55,.20);
+}
+.hero .card:first-child::after {
+  content: "";
+  position: absolute;
+  right: -100px;
+  top: -80px;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212,175,55,.22), transparent 66%);
+  pointer-events: none;
+}
+
+#newsGuardPanel,
+#pairPermissionPanel,
+#dailyChecklistPanel {
+  border-color: rgba(255,255,255,.13);
+}
+
+#calendarTable tr:hover,
+#journalTable tr:hover,
+#paperTable tr:hover {
+  background: rgba(255,255,255,.035);
+}
+
+#briefing {
+  min-height: 300px;
+}
+
+#scanner #scanResult,
+#risk #riskOutput,
+#automation #autoResult,
+#coachText {
+  min-height: 230px;
+}
+
+@media (max-width: 1119px) {
   header, main { padding: 14px; }
   .hero, .grid2, .grid3, .grid4, .form2, .form3, .decision-bar, .permission-grid, .v51-status-grid { grid-template-columns: 1fr !important; }
-  .tabs { grid-template-columns: repeat(2,minmax(0,1fr)); position: static; }
+  .tabs { grid-template-columns: repeat(2,minmax(0,1fr)); position: sticky; top: 0; }
   .panel-head { display: block; }
 }
 
 @media (max-width: 560px) {
   h1 { font-size: 36px; }
-  .tabs { grid-template-columns: 1fr; }
+  .tabs { grid-template-columns: 1fr; position: static; }
   .decision-actions { grid-template-columns: 1fr; }
   .card { padding: 14px; border-radius: 18px; }
 }
