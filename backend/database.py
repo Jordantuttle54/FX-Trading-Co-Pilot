@@ -1,10 +1,15 @@
+import os
 import sqlite3
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "data" / "fx_copilot.sqlite3"
+
+# Local development can use the project data folder.
+# Vercel/serverless runtime should use /tmp because the deployed project folder is read-only.
+DEFAULT_DB_PATH = "/tmp/fx_copilot.sqlite3" if os.getenv("VERCEL") else str(ROOT / "data" / "fx_copilot.sqlite3")
+DB_PATH = Path(os.getenv("FX_COPILOT_DB_PATH", DEFAULT_DB_PATH))
 
 def get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
