@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>AI FX Co-Pilot - Homepage Tune v3</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+</head>
+<body>
+<header>
+  <div class="hero">
+    <div class="card">
+      <div class="pill"><span class="dot"></span> Homepage Tune v3 — paper trading only</div>
+      <h1>AI FX Trading Co-Pilot</h1><div class="version-mark">Homepage Tune v3 active</div>
+      <p class="muted">
+        Daily trading control centre for market tracking, news guard, setup scanning, risk management, journaling and paper trading.
+        Live order execution is intentionally locked.
+      </p>
+      <div class="hero-points">
+        <span>OANDA market feed</span>
+        <span>Manual news calendar</span>
+        <span>Paper trading only</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>System Status</h2>
+      <div id="systemStatus" class="result">Loading...</div>
+      <button onclick="refreshAll()">Refresh market data</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <nav class="tabs">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="scanner">Setup Scanner</button>
+    <button class="tab" data-tab="risk">Risk Calculator</button>
+    <button class="tab" data-tab="journal">Journal</button>
+    <button class="tab" data-tab="paper">Paper Trading</button>
+    <button class="tab" data-tab="automation">Automation Gate</button>
+  </nav>
+
+  <section id="dashboard" class="section active stack">
+    <div id="controlCards" class="grid4"></div>
+
+    <div class="card" id="newsGuardPanel">
+      <h2>Today’s News Guard</h2>
+      <div class="muted">Loading news guard...</div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>AI Morning Briefing</h2>
+        <div id="briefing" class="result briefing-box">Loading briefing...</div>
+      </div>
+      <div class="card">
+        <h2>Economic Calendar</h2>
+        <p class="muted small">Manual CSV calendar for now. Replace the placeholder rows with real events each week.</p>
+        <div id="calendarWarnings"></div>
+        <table id="calendarTable"></table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Watchlist + News Risk</h2>
+      <div id="marketWarnings"></div>
+      <div id="pairs" class="grid3"></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h2>Selected Pair Chart</h2>
+        <div class="form2">
+          <label>Pair <select id="chartPair"></select></label>
+          <label>Interval
+            <select id="chartInterval">
+              <option value="15m">15m</option>
+              <option value="1h" selected>1h</option>
+              <option value="4h">4h</option>
+              <option value="1d">1d</option>
+            </select>
+          </label>
+        </div>
+        <button style="margin-top:12px;" onclick="loadChart()">Load chart</button>
+      </div>
+      <div class="card">
+        <canvas id="chartCanvas" class="chart"></canvas>
+        <div id="chartInfo" class="muted small" style="margin-top:8px;"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="scanner" class="section">
+    <div class="grid2">
+      <div class="card">
+        <h2>Setup Scanner</h2>
+        <p class="muted">Scores a potential trade against your rules before you take it.</p>
+        <div class="form2">
+          <label>Pair <select id="scanPair"></select></label>
+          <label>Direction
+            <select id="scanDirection"><option>Long</option><option>Short</option></select>
+          </label>
+          <label>Timeframe
+            <select id="scanTf">
+              <option value="15m">15M</option><option value="1h" selected>1H</option><option value="4h">4H</option><option value="1d">Daily</option>
+            </select>
+          </label>
+          <label>Risk/Reward <input id="scanRR" type="number" step="0.1" value="2.0"/></label>
+        </div>
+        <div class="checks">
+          <label class="checkline"><input type="checkbox" id="chkTrend"/> Higher timeframe trend alignment</label>
+          <label class="checkline"><input type="checkbox" id="chkZone"/> Entry is at a planned zone</label>
+          <label class="checkline"><input type="checkbox" id="chkStop"/> Stop-loss is defined</label>
+          <label class="checkline"><input type="checkbox" id="chkEmotion"/> No revenge/emotional trigger</label>
+          <label class="checkline"><input type="checkbox" id="chkNews"/> No high-impact news risk</label>
+        </div>
+        <button style="margin-top:14px;" onclick="scanSetup()">Score setup</button>
+      </div>
+      <div class="card">
+        <h2>Decision</h2>
+        <div id="scanResult" class="result">Score a setup to see the decision.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="risk" class="section">
+    <div class="grid2">
+      <div class="card">
+        <h2>Risk Calculator</h2>
+        <div class="form2">
+          <label>Account balance <input id="riskBalance" type="number" value="5000"/></label>
+          <label>Risk % <input id="riskPct" type="number" step="0.05" value="0.5"/></label>
+          <label>Pair <select id="riskPair"></select></label>
+          <label>Entry <input id="entry" type="number" step="0.00001" value="1.27000"/></label>
+          <label>Stop-loss <input id="stop" type="number" step="0.00001" value="1.26750"/></label>
+          <label>Target <input id="target" type="number" step="0.00001" value="1.27500"/></label>
+          <label>Pip value per standard lot <input id="pipValue" type="number" step="0.01" value="10"/></label>
+        </div>
+        <button style="margin-top:14px;" onclick="calculateRisk()">Calculate</button>
+      </div>
+      <div class="card">
+        <h2>Output</h2>
+        <div id="riskOutput" class="result">Run a calculation.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="journal" class="section stack">
+    <div class="grid2">
+      <div class="card">
+        <h2>Log Trade</h2>
+        <div class="form2">
+          <label>Date <input id="jDate" type="date"/></label>
+          <label>Pair <select id="jPair"></select></label>
+          <label>Direction <select id="jDirection"><option>Long</option><option>Short</option></select></label>
+          <label>Result R <input id="jR" type="number" step="0.1" placeholder="2 or -1"/></label>
+        </div>
+        <label style="margin-top:12px;">Reason <textarea id="jReason"></textarea></label>
+        <label style="margin-top:12px;">Lesson <textarea id="jLesson"></textarea></label>
+        <button style="margin-top:14px;" onclick="saveJournal()">Save</button>
+        <button class="danger" onclick="clearJournal()">Clear all</button>
+      </div>
+      <div class="card">
+        <h2>Coach Stats</h2>
+        <div class="grid3">
+          <div class="kpi"><span class="muted small">Trades</span><strong id="statTrades">0</strong></div>
+          <div class="kpi"><span class="muted small">Win rate</span><strong id="statWin">0%</strong></div>
+          <div class="kpi"><span class="muted small">Total R</span><strong id="statR">0</strong></div>
+        </div>
+        <div id="coachText" class="result" style="margin-top:14px;"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Journal Entries</h2>
+      <table id="journalTable"></table>
+    </div>
+  </section>
+
+  <section id="paper" class="section stack">
+    <div class="grid2">
+      <div class="card">
+        <h2>Open Paper Trade</h2>
+        <p class="muted">This records a simulated trade only. It places no broker order.</p>
+        <div class="form2">
+          <label>Pair <select id="pPair"></select></label>
+          <label>Direction <select id="pDirection"><option>Long</option><option>Short</option></select></label>
+          <label>Entry <input id="pEntry" type="number" step="0.00001" value="1.27000"/></label>
+          <label>Stop-loss <input id="pStop" type="number" step="0.00001" value="1.26750"/></label>
+          <label>Target <input id="pTarget" type="number" step="0.00001" value="1.27500"/></label>
+          <label>Risk % <input id="pRiskPct" type="number" step="0.05" value="0.5"/></label>
+          <label>Risk amount <input id="pRiskAmount" type="number" step="0.01" value="25"/></label>
+          <label>Position units <input id="pUnits" type="number" step="1" value="10000"/></label>
+        </div>
+        <label style="margin-top:12px;">Notes <textarea id="pNotes"></textarea></label>
+        <button style="margin-top:14px;" onclick="openPaperTrade()">Open paper trade</button>
+      </div>
+      <div class="card">
+        <h2>Paper Trade Controls</h2>
+        <div class="notice danger">
+          Live execution is locked. This is where demo broker execution could be added later after backtesting and manual proof.
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Paper Trades</h2>
+      <table id="paperTable"></table>
+    </div>
+  </section>
+
+  <section id="automation" class="section">
+    <div class="grid2">
+      <div class="card">
+        <h2>Automation Readiness Gate</h2>
+        <div class="form2">
+          <label>Backtested trades <input id="aBack" type="number" value="50"/></label>
+          <label>Forward/demo trades <input id="aForward" type="number" value="20"/></label>
+          <label>Win rate % <input id="aWin" type="number" value="48"/></label>
+          <label>Average R <input id="aAvgR" type="number" step="0.01" value="0.18"/></label>
+          <label>Max drawdown % <input id="aDD" type="number" step="0.1" value="6"/></label>
+          <label>Max daily loss % <input id="aDaily" type="number" step="0.1" value="1.5"/></label>
+        </div>
+        <button style="margin-top:14px;" onclick="checkAutomation()">Check readiness</button>
+      </div>
+      <div class="card">
+        <h2>Result</h2>
+        <div id="autoResult" class="result">Run the readiness check.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">
+    Educational software only. Not financial advice. FX, spread betting and CFDs can result in losses. Use demo/paper mode until your strategy has proof.
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+AI_FX_CoPilot_GitHub_Ready package contents
+
+Included source and config:
+- backend/__init__.py
+- backend/ai_briefing.py
+- backend/config.py
+- backend/data_providers.py
+- backend/database.py
+- backend/main.py
+- backend/models.py
+- backend/strategy.py
+- frontend/index.html
+- frontend/app.js
+- frontend/styles.css
+- api/index.py
+- data/economic_calendar.example.csv
+- requirements.txt
+- vercel.json
+- .env.example
+- .gitignore
+- README.md
+- VERSION.txt
+- docs/SECURITY.md
+- docs/DEPLOYMENT.md
+- docs/PROJECT_AUDIT.md
+- docs/ROADMAP.md
+
+Excluded from this clean package:
+- .env and real API keys
+- .env api codes.txt
+- .venv
+- __pycache__
+- SQLite runtime database
+- local Windows batch scripts
+- local PowerShell patch scripts
+- raw patch_files folder
+
+Validation performed:
+- Python files compile successfully.
+- Frontend app.js passes Node syntax check.
+- backend.main imports successfully.
+- No forbidden runtime files detected in final package tree.
