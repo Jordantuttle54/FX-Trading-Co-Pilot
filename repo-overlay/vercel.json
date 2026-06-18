@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/fx-copilot/cron",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/fx-copilot/calendar/sync",
+      "schedule": "5 * * * *"
+    }
+  ]
+}
