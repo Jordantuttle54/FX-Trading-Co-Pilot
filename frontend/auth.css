@@ -1,3 +1,5 @@
+@import url('/static/paper_lab.css');
+
 #authOverlay {
   position: fixed;
   inset: 0;
