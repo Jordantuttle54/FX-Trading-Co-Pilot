@@ -18,6 +18,13 @@ let latestSnapshot = null;
 let latestAnalysis = null;
 let latestCalendar = null;
 let latestBriefing = null;
+let freshness = {
+  config: null,
+  market: null,
+  calendar: null,
+  analysis: null,
+  briefing: null
+};
 
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -99,20 +106,234 @@ function pairNewsInfo(pair) {
   return { tone: "green", label: "Clear", text: "No linked high-impact event loaded" };
 }
 
+function markFresh(key) {
+  freshness[key] = new Date();
+  renderFreshness();
+}
+
+function timeAgo(date) {
+  if (!date) return "not loaded";
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 10) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  return `${hours}h ago`;
+}
+
+function renderFreshness() {
+  const el = $("freshnessBar");
+  if (!el) return;
+  const items = [
+    ["Market", freshness.market],
+    ["Calendar", freshness.calendar],
+    ["Briefing", freshness.briefing],
+    ["Analysis", freshness.analysis]
+  ];
+  el.innerHTML = items.map(([label, when]) => `<span class="freshness-pill">${label}: <strong>${timeAgo(when)}</strong></span>`).join("");
+}
+
+function pairPermission(pair) {
+  const news = pairNewsInfo(pair);
+  const analysis = (latestAnalysis?.pairs || []).find(p => p.pair === pair);
+  const volatility = analysis?.volatility || "Unknown";
+  const bias = analysis?.bias || "Neutral";
+
+  if (news.tone === "red") {
+    return {
+      status: "Blocked",
+      bucket: "blocked",
+      tone: "red",
+      reason: `${news.text} linked high-impact news`
+    };
+  }
+
+  if (volatility === "Very High") {
+    return {
+      status: "Blocked",
+      bucket: "blocked",
+      tone: "red",
+      reason: "Very high volatility"
+    };
+  }
+
+  if (news.tone === "amber" || bias === "Neutral") {
+    return {
+      status: "Watch",
+      bucket: "watch",
+      tone: "amber",
+      reason: news.tone === "amber" ? `${news.text} medium news` : "Mixed or neutral bias"
+    };
+  }
+
+  return {
+    status: "Assess",
+    bucket: "assess",
+    tone: "green",
+    reason: "No linked high-impact news loaded; still requires 85+ scanner score"
+  };
+}
+
+function renderDecisionBar() {
+  const el = $("decisionBar");
+  if (!el || !config || !latestCalendar || !latestAnalysis) return;
+
+  const guard = analyseNewsGuard();
+  const allPairs = config.watchlist || [];
+  const permissions = allPairs.map(pair => ({ pair, ...pairPermission(pair) }));
+  const assess = permissions.filter(p => p.bucket === "assess");
+  const watch = permissions.filter(p => p.bucket === "watch");
+  const blocked = permissions.filter(p => p.bucket === "blocked");
+
+  let tone = "green";
+  let headline = "CONTROLLED — ASSESS ONLY";
+  let action = "Only score planned setups. No live execution.";
+  if (guard.risk === "High" || blocked.length >= Math.max(2, Math.ceil(allPairs.length / 2))) {
+    tone = "red";
+    headline = "HIGH RISK — PAPER ONLY";
+    action = "Monitor markets. Only review planned setups after news risk clears.";
+  } else if (guard.risk === "Medium" || watch.length) {
+    tone = "amber";
+    headline = "CAUTION — WAIT FOR CLEAN SETUPS";
+    action = "Use the scanner. Do not proceed unless confidence is 85+ and hard blockers are clear.";
+  }
+
+  el.className = `decision-bar ${tone}`;
+  el.innerHTML = `
+    <div class="decision-main">
+      <span class="eyebrow">System decision</span>
+      <strong>${headline}</strong>
+      <em>${action}</em>
+    </div>
+    <div class="decision-actions">
+      <div class="decision-chip"><span>Confidence gate</span><strong>${config.rules.min_confidence_score || 85}+</strong></div>
+      <div class="decision-chip"><span>Execution</span><strong>LOCKED</strong></div>
+      <div class="decision-chip"><span>Assessable pairs</span><strong>${assess.length}</strong></div>
+      <div class="decision-chip"><span>Blocked / watch</span><strong>${blocked.length} / ${watch.length}</strong></div>
+    </div>
+  `;
+}
+
+function renderPairPermissions() {
+  const el = $("pairPermissionPanel");
+  if (!el || !config || !latestAnalysis || !latestCalendar) return;
+
+  const permissions = (config.watchlist || []).map(pair => ({ pair, ...pairPermission(pair) }));
+  const groups = [
+    { key: "assess", title: "Allowed to assess", tone: "green", empty: "No clean pairs loaded yet." },
+    { key: "watch", title: "Watch only", tone: "amber", empty: "No caution pairs." },
+    { key: "blocked", title: "Blocked by risk", tone: "red", empty: "No hard blocks loaded." }
+  ];
+
+  const groupHtml = groups.map(g => {
+    const items = permissions.filter(p => p.bucket === g.key);
+    return `
+      <div class="permission-column">
+        <h3>${badge(g.title, g.tone)}</h3>
+        <div class="permission-list">
+          ${items.length ? items.map(p => `
+            <div class="permission-item">
+              <div><strong>${p.pair}</strong><span>${escapeHtml(p.reason)}</span></div>
+              ${badge(p.status, p.tone)}
+            </div>
+          `).join("") : `<div class="permission-empty">${g.empty}</div>`}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <h2>Pair Permission Map</h2>
+        <p class="muted small">This is not a trade signal. It tells you which pairs are clean enough to send to the 85+ scanner.</p>
+      </div>
+    </div>
+    <div class="permission-grid">${groupHtml}</div>
+  `;
+}
+
+function renderDailyChecklist() {
+  const el = $("dailyChecklistPanel");
+  if (!el || !config || !latestCalendar) return;
+  const guard = analyseNewsGuard();
+
+  const checks = [
+    {
+      label: "Market feed",
+      detail: config.configured.oanda ? "OANDA connected" : "OANDA missing",
+      tone: config.configured.oanda ? "green" : "red"
+    },
+    {
+      label: "Calendar loaded",
+      detail: latestCalendar.provider ? `${latestCalendar.provider} active` : "No calendar provider",
+      tone: latestCalendar.provider ? "green" : "red"
+    },
+    {
+      label: "News risk reviewed",
+      detail: `${guard.highEvents.length} high-impact events loaded`,
+      tone: guard.highEvents.length ? "amber" : "green"
+    },
+    {
+      label: "Confidence gate",
+      detail: `${config.rules.min_confidence_score || 85}+ required`,
+      tone: "green"
+    },
+    {
+      label: "Live trading",
+      detail: "Locked / paper only",
+      tone: "green"
+    },
+    {
+      label: "Next action",
+      detail: guard.risk === "High" ? "Monitor and wait for clean conditions" : "Score only planned setups",
+      tone: guard.risk === "High" ? "amber" : "green"
+    }
+  ];
+
+  el.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <h2>Daily Control Checklist</h2>
+        <p class="muted small">Quick safety checks before any setup is assessed.</p>
+      </div>
+    </div>
+    <div class="checklist">
+      ${checks.map(c => `
+        <div class="check-row">
+          <div><strong>${escapeHtml(c.label)}</strong><span>${escapeHtml(c.detail)}</span></div>
+          <div class="check-dot ${c.tone}">${c.tone === "red" ? "!" : "✓"}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderV51Panels() {
+  renderDecisionBar();
+  renderPairPermissions();
+  renderDailyChecklist();
+}
+
+
 function renderSystemStatus() {
   if (!config) return;
   const calProvider = config.configured.calendar_provider || "unknown";
   const manualFile = config.configured.manual_calendar_file || "data/economic_calendar.csv";
+  const confidenceGate = config.rules.min_confidence_score || 85;
   $("systemStatus").innerHTML = `
-    <div class="status-grid">
-      <div class="status-item"><span>Market feed</span><strong>${escapeHtml(config.selected_provider)}</strong></div>
-      <div class="status-item"><span>OANDA</span><strong>${config.configured.oanda ? "connected" : "not set"}</strong></div>
-      <div class="status-item"><span>Calendar</span><strong>${escapeHtml(calProvider)}</strong></div>
-      <div class="status-item"><span>Manual file</span><strong>${config.configured.manual_calendar ? "found" : "missing"}</strong></div>
-      <div class="status-item"><span>Live trading</span><strong class="danger-text">LOCKED</strong></div>
-      <div class="status-item"><span>Risk / trade</span><strong>${config.rules.max_risk_per_trade_pct}%</strong></div>
+    <div class="v51-status-grid">
+      <div class="v51-status-item good"><span>Market feed</span><strong>${escapeHtml(config.selected_provider)}</strong></div>
+      <div class="v51-status-item ${config.configured.oanda ? "good" : "amber"}"><span>OANDA</span><strong>${config.configured.oanda ? "connected" : "not set"}</strong></div>
+      <div class="v51-status-item good"><span>Calendar</span><strong>${escapeHtml(calProvider)}</strong></div>
+      <div class="v51-status-item ${config.configured.manual_calendar ? "good" : "amber"}"><span>Manual file</span><strong>${config.configured.manual_calendar ? "found" : "missing"}</strong></div>
+      <div class="v51-status-item red"><span>Live trading</span><strong>LOCKED</strong></div>
+      <div class="v51-status-item good"><span>Risk / trade</span><strong>${config.rules.max_risk_per_trade_pct}%</strong></div>
+      <div class="v51-status-item good"><span>Confidence gate</span><strong>${confidenceGate}+</strong></div>
+      <div class="v51-status-item good"><span>Monitor mode</span><strong>24/7</strong></div>
     </div>
-    <div class="muted small" style="margin-top:10px;">Trading window: ${escapeHtml(config.rules.trading_window)} · Calendar file: ${escapeHtml(manualFile)}</div>
+    <div class="v51-status-foot">Monitor mode: ${escapeHtml(config.rules.trading_window || "24/7 monitor")} · Calendar file: ${escapeHtml(manualFile)}</div>
   `;
 }
 
@@ -124,6 +345,7 @@ function renderControlCards() {
     { label: "Market Feed", value: config.selected_provider.toUpperCase(), detail: config.configured.oanda ? "OANDA connected" : "Check provider settings", tone: config.configured.oanda ? "green" : "amber" },
     { label: "Calendar Source", value: calendarProvider.replace("_", " ").toUpperCase(), detail: config.configured.manual_calendar ? "Manual CSV active" : "Calendar file missing", tone: config.configured.manual_calendar ? "green" : "amber" },
     { label: "Today’s Risk", value: guard.risk.toUpperCase(), detail: `${guard.highEvents.length} high-impact events loaded`, tone: guard.tone },
+    { label: "Confidence Gate", value: `${config.rules.min_confidence_score}+`, detail: "Strict paper/manual review", tone: "amber" },
     { label: "Execution", value: "LOCKED", detail: "Paper trading only", tone: "red" },
   ];
   $("controlCards").innerHTML = cards.map(c => `
@@ -144,6 +366,12 @@ function renderNewsGuard() {
     : `<li>No high-impact events loaded in the manual calendar.</li>`;
   const blocked = guard.blockedPairs.length ? guard.blockedPairs.map(p => badge(p, "red")).join(" ") : badge("No blocked pairs loaded", "green");
 
+  const windows = events.length ? events.map(e => `
+    <div class="news-window">
+      <strong>${escapeHtml(e.currency || "")} ${escapeHtml(e.time || "")} — ${escapeHtml(e.event || "")}</strong>
+      <span>Guard rule: avoid linked pairs for at least ${config.rules.news_guard_minutes || 30} minutes either side, then reassess only if confidence is ${config.rules.min_confidence_score || 85}+.</span>
+    </div>
+  `).join("") : "";
   $("newsGuardPanel").innerHTML = `
     <div class="panel-head">
       <div>
@@ -156,11 +384,12 @@ function renderNewsGuard() {
       <div class="mini-panel">
         <h3>High-impact events</h3>
         <ul class="news-list">${eventList}</ul>
+        <div class="news-window-list">${windows}</div>
       </div>
       <div class="mini-panel">
         <h3>News-affected pairs</h3>
         <div class="badge-wrap">${blocked}</div>
-        <p class="muted small">Use this as a warning layer, not an automatic trade signal.</p>
+        <p class="muted small">Use this as a permission filter before opening the Setup Scanner. It is not an automatic trade signal.</p>
       </div>
     </div>
   `;
@@ -168,17 +397,20 @@ function renderNewsGuard() {
 
 async function loadConfig() {
   config = await api("/api/config");
+  markFresh("config");
   fillSelects();
   renderSystemStatus();
 }
 
 async function loadSnapshot() {
   latestSnapshot = await api("/api/market/snapshot");
+  markFresh("market");
   $("marketWarnings").innerHTML = warningsHtml(latestSnapshot.warnings);
 }
 
 async function loadCalendar() {
   latestCalendar = await api("/api/calendar");
+  markFresh("calendar");
   $("calendarWarnings").innerHTML = warningsHtml(latestCalendar.warnings);
   $("calendarTable").innerHTML = `
     <tr><th>Date</th><th>Time</th><th>Currency</th><th>Event</th><th>Impact</th></tr>
@@ -194,32 +426,38 @@ async function loadCalendar() {
   `;
   renderControlCards();
   renderNewsGuard();
+  renderV51Panels();
 }
 
 async function loadAnalysis() {
   latestAnalysis = await api("/api/market/analysis?interval=1h");
+  markFresh("analysis");
   const quotesByPair = {};
   (latestSnapshot?.quotes || []).forEach(q => quotesByPair[q.pair] = q);
   $("pairs").innerHTML = latestAnalysis.pairs.map(p => {
     const q = quotesByPair[p.pair] || {};
     const news = pairNewsInfo(p.pair);
+    const permission = pairPermission(p.pair);
     return `<div class="card pair-card ${news.tone === "red" ? "news-hot" : ""}">
-      <div class="pair-head"><h3>${p.pair}</h3>${badge(news.label, news.tone)}</div>
+      <div class="pair-head"><h3>${p.pair}</h3>${badge(permission.status, permission.tone)}</div>
       <div class="row"><span>Price</span><strong>${fmt(q.price || p.price, p.pair)}</strong></div>
       <div class="row"><span>Bias</span>${badge(p.bias, toneFromBias(p.bias))}</div>
       <div class="row"><span>Trend</span><strong>${p.trend}</strong></div>
       <div class="row"><span>Volatility</span><strong>${p.volatility}</strong></div>
       <div class="row"><span>Source</span><strong>${q.source || "analysis"}</strong></div>
+      <p class="muted small"><strong>Permission:</strong> ${escapeHtml(permission.reason)}</p>
       <p class="muted small"><strong>News:</strong> ${escapeHtml(news.text)}</p>
       <p class="muted small">${p.zone}</p>
       <p class="muted small">${p.note}</p>
     </div>`;
   }).join("");
+  renderV51Panels();
 }
 
 async function loadBriefing() {
   const data = await api("/api/briefing");
   latestBriefing = data;
+  markFresh("briefing");
   $("briefing").innerHTML = data.summary
     .split("\n\n")
     .map(line => `<p>${escapeHtml(line)}</p>`)
@@ -293,23 +531,29 @@ async function scanSetup() {
     }
   };
   const r = await api("/api/scan", { method: "POST", body: JSON.stringify(payload) });
+  const blockers = (r.hard_blockers || []).length ? r.hard_blockers.map(b => `- ${b}`).join("\n") : "none";
+  const components = (r.components || []).map(c => `${c.name}: ${c.points}/${c.max_points} - ${c.note}`).join("\n");
   $("scanResult").innerHTML = `
-${badge(r.verdict, r.tone)} Score: ${r.score}/100
+${badge(r.verdict, r.tone)} Confidence: ${r.confidence_score || r.score}/100
+Minimum required: ${r.min_confidence_score || config.rules.min_confidence_score}/100
 
 ${r.message}
 
-Minimum confidence gate: ${r.min_confidence_score || "not set"}
+Hard blockers:
+${blockers}
+
+Confidence components:
+${components}
+
 Trend aligned: ${r.trend_ok ? "yes" : "no"}
 Risk/reward acceptable: ${r.risk_reward_ok ? "yes" : "no"}
-Hard blockers: ${r.hard_blockers && r.hard_blockers.length ? r.hard_blockers.join("; ") : "none"}
 Linked high-impact news: ${r.linked_high_news.length ? r.linked_high_news.map(e => `${e.time} ${e.currency} ${e.event}`).join("; ") : "none loaded"}
-
-Components:
-${r.components ? r.components.map(c => `${c.passed ? "PASS" : "FAIL"} - ${c.name}: ${c.points}/${c.max_points} - ${c.note}`).join("\n") : "Legacy score model"}
 
 Pair analysis:
 ${r.analysis.bias} | ${r.analysis.trend}
 Zone: ${r.analysis.zone}
+
+Mode: ${r.mode || "paper/manual review only"}
   `;
 }
 
@@ -461,6 +705,7 @@ async function refreshAll() {
     renderSystemStatus();
     renderControlCards();
     renderNewsGuard();
+    renderV51Panels();
   } catch (err) {
     console.error(err);
     alert("Error: " + err.message);

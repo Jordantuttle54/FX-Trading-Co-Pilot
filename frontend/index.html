@@ -3,23 +3,23 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>AI FX Co-Pilot - Homepage Tune v3</title>
+  <title>AI FX Co-Pilot - Dashboard UX v5.1</title>
   <link rel="stylesheet" href="/static/styles.css"/>
 </head>
 <body>
 <header>
   <div class="hero">
     <div class="card">
-      <div class="pill"><span class="dot"></span> Homepage Tune v3 — paper trading only</div>
-      <h1>AI FX Trading Co-Pilot</h1><div class="version-mark">Homepage Tune v3 active</div>
+      <div class="pill"><span class="dot"></span> Decision Centre v5.1 — paper trading only</div>
+      <h1>AI FX Trading Co-Pilot</h1><div class="version-mark">Decision Centre v5.1 active</div>
       <p class="muted">
-        Daily trading control centre for market tracking, news guard, setup scanning, risk management, journaling and paper trading.
+        24/7 decision centre for market tracking, news guard, confidence scoring, pair permissions, risk management, journaling and paper trading.
         Live order execution is intentionally locked.
       </p>
       <div class="hero-points">
         <span>OANDA market feed</span>
         <span>Manual news calendar</span>
-        <span>Paper trading only</span>
+        <span>85+ confidence gate</span><span>Paper trading only</span>
       </div>
     </div>
     <div class="card">
@@ -41,11 +41,30 @@
   </nav>
 
   <section id="dashboard" class="section active stack">
+    <div id="freshnessBar" class="freshness-bar">Loading update status...</div>
     <div id="controlCards" class="grid4"></div>
+
+    <div class="decision-bar" id="decisionBar">
+      <div>
+        <span class="eyebrow">System decision</span>
+        <strong>Loading decision state...</strong>
+      </div>
+    </div>
 
     <div class="card" id="newsGuardPanel">
       <h2>Today’s News Guard</h2>
       <div class="muted">Loading news guard...</div>
+    </div>
+
+    <div class="grid2">
+      <div class="card" id="pairPermissionPanel">
+        <h2>Pair Permission Map</h2>
+        <div class="muted">Loading pair permissions...</div>
+      </div>
+      <div class="card" id="dailyChecklistPanel">
+        <h2>Daily Control Checklist</h2>
+        <div class="muted">Loading checklist...</div>
+      </div>
     </div>
 
     <div class="grid2">
@@ -55,7 +74,7 @@
       </div>
       <div class="card">
         <h2>Economic Calendar</h2>
-        <p class="muted small">Manual CSV calendar for now. Replace the placeholder rows with real events each week.</p>
+        <p class="muted small">Manual CSV calendar for now. Keep this file updated weekly while we test API options.</p>
         <div id="calendarWarnings"></div>
         <table id="calendarTable"></table>
       </div>
