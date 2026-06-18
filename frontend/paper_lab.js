@@ -1,5 +1,6 @@
 (() => {
   const WEEK_KEY = "afx_paper_week_start";
+  let latestPaperRows = [];
 
   function localUser() {
     return localStorage.getItem("afx_auth_user") || "User";
@@ -34,6 +35,17 @@
     return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  function parseTradeNumber(value) {
+    const cleaned = String(value ?? "")
+      .trim()
+      .replace(/,/g, "")
+      .replace(/r$/i, "")
+      .replace(/£/g, "");
+    if (!cleaned) return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
+
   function ensurePaperLabShell() {
     const section = document.getElementById("paper");
     if (!section || document.getElementById("paperLabDashboard")) return;
@@ -58,7 +70,7 @@
       <div class="paper-lab-rules">
         <div><strong>Rule 1</strong><span>Only paper trade if the setup passes the checklist and confidence gate.</span></div>
         <div><strong>Rule 2</strong><span>Record entry, stop, target and reason before taking the trade.</span></div>
-        <div><strong>Rule 3</strong><span>Close every paper trade with a final R result.</span></div>
+        <div><strong>Rule 3</strong><span>Close every paper trade with a final R result. Close price is optional.</span></div>
         <div><strong>Rule 4</strong><span>Review Total R, win rate and rule discipline after 7 days.</span></div>
       </div>
     `;
@@ -128,8 +140,8 @@
     if (row.status !== "OPEN") return `<span class="muted small">Closed</span>`;
     return `
       <div class="close-trade-controls">
-        <input id="closePrice_${row.id}" type="number" step="0.00001" placeholder="Close price" />
-        <input id="closeR_${row.id}" type="number" step="0.1" placeholder="Result R" />
+        <input id="closePrice_${row.id}" type="number" step="0.00001" placeholder="Close price optional" />
+        <input id="closeR_${row.id}" type="text" inputmode="decimal" placeholder="Result R e.g. -1 or 2" />
         <button type="button" onclick="closePaperTrade(${row.id})">Close</button>
       </div>`;
   }
@@ -139,6 +151,7 @@
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     const rows = data.rows || [];
+    latestPaperRows = rows;
     renderPaperLab(rows, data.stats || {});
 
     const table = document.getElementById("paperTable");
@@ -164,16 +177,23 @@
   };
 
   window.closePaperTrade = async function closePaperTrade(tradeId) {
-    const closePrice = Number(document.getElementById(`closePrice_${tradeId}`)?.value);
-    const resultR = Number(document.getElementById(`closeR_${tradeId}`)?.value);
-    if (!Number.isFinite(closePrice) || closePrice <= 0) {
-      alert("Enter a valid close price.");
-      return;
-    }
+    const row = latestPaperRows.find(r => Number(r.id) === Number(tradeId)) || {};
+    const closePriceRaw = document.getElementById(`closePrice_${tradeId}`)?.value;
+    const resultRRaw = document.getElementById(`closeR_${tradeId}`)?.value;
+    const parsedClosePrice = parseTradeNumber(closePriceRaw);
+    const resultR = parseTradeNumber(resultRRaw);
+    const fallbackClosePrice = Number(row.entry || row.close_price || 1);
+    const closePrice = parsedClosePrice ?? fallbackClosePrice;
+
     if (!Number.isFinite(resultR)) {
-      alert("Enter the trade result in R, for example 2, 1.2, 0, or -1.");
+      alert("Enter the trade result in R, for example 2, 1.2, 0, or -1. You can leave close price blank.");
       return;
     }
+    if (!Number.isFinite(closePrice) || closePrice <= 0) {
+      alert("Close price could not be calculated. Enter any valid price, or refresh and try again.");
+      return;
+    }
+
     const params = new URLSearchParams({ close_price: String(closePrice), result_r: String(resultR) });
     const res = await fetch(`/api/paper-trades/${tradeId}/close?${params.toString()}`, { method: "POST" });
     if (!res.ok) {
