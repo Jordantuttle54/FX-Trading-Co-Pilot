@@ -1,0 +1,8 @@
+AI FX Co-Pilot
+Version: 0.4.0-github-ready
+Status: GitHub-ready clean package
+Mode: Paper/manual review only
+Live trading: Locked
+Autonomous execution: Disabled
+Confidence gate: V4 strict gate applied
+Generated: 2026-06-18
