@@ -1,16 +1,22 @@
-AI_FX_CoPilot_GitHub_Ready package contents
+AI FX Co-Pilot v0.5.0-user-accounts package contents
 
 Included source and config:
 - backend/__init__.py
 - backend/ai_briefing.py
+- backend/auth.py
 - backend/config.py
 - backend/data_providers.py
 - backend/database.py
 - backend/main.py
 - backend/models.py
 - backend/strategy.py
+- backend/user_records.py
 - frontend/index.html
 - frontend/app.js
+- frontend/auth.css
+- frontend/auth.js
+- frontend/paper_lab.css
+- frontend/paper_lab.js
 - frontend/styles.css
 - api/index.py
 - data/economic_calendar.example.csv
@@ -20,6 +26,7 @@ Included source and config:
 - .gitignore
 - README.md
 - VERSION.txt
+- MANIFEST.txt
 - docs/SECURITY.md
 - docs/DEPLOYMENT.md
 - docs/PROJECT_AUDIT.md
@@ -40,3 +47,5 @@ Validation performed:
 - Frontend app.js passes Node syntax check.
 - backend.main imports successfully.
 - No forbidden runtime files detected in final package tree.
+- Auth module verified: HMAC session tokens, user-scoped records.
+- Database module verified: SQLAlchemy with SQLite/Postgres dual-mode.
