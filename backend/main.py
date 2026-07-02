@@ -126,7 +126,7 @@ async def agent_frontend(path: str = ""):
         agent_html = FRONTEND / "agent.html"
         if agent_html.exists():
                     return FileResponse(agent_html)
-                return FileResponse(FRONTEND / "index.html")
+            return FileResponse(FRONTEND / "index.html")
 
 
 # ---------------------------------------------------------------------------
