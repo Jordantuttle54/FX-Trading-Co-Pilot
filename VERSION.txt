@@ -1,8 +1,10 @@
 AI FX Co-Pilot
-Version: 0.4.0-github-ready
-Status: GitHub-ready clean package
+Version: 0.5.0-user-accounts
+Status: Live on Vercel
 Mode: Paper/manual review only
 Live trading: Locked
 Autonomous execution: Disabled
 Confidence gate: V4 strict gate applied
-Generated: 2026-06-18
+Auth: HMAC session tokens, user-scoped records
+Database: SQLite (local dev) / Postgres (production via DATABASE_URL)
+Generated: 2026-07-02
