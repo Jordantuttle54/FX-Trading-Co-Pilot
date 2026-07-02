@@ -10,13 +10,13 @@ Do not connect real-money execution until the system has been reviewed, tested, 
 
 ## Current status
 
-- Version: `0.4.0-github-ready`
+- Version: 0.5.0-user-accounts
 - Mode: paper/manual review only
 - Live trading: locked
 - Autonomous execution: disabled
 - Confidence gate: V4 strict confidence gate applied
-- Database: local SQLite for development only
-- Recommended online database: hosted Postgres before production use
+- Auth: HMAC session tokens, user-scoped journal and paper-trade records
+- Database: SQLite (local dev) / Postgres (production via DATABASE_URL)
 
 ## Features
 
@@ -26,90 +26,68 @@ Do not connect real-money execution until the system has been reviewed, tested, 
 - Setup scanner
 - Conservative confidence scoring
 - Risk calculator
-- Journal
-- Paper trade log
+- Journal (per-user)
+- Paper trade log with 7-day sprint dashboard (per-user)
 - Automation-readiness gate
+- User login with HMAC session tokens
 
 ## Project structure
 
-```text
-backend/      FastAPI backend and trading logic
-frontend/     Static browser interface
-data/         Safe example calendar data only
-docs/         Security and deployment notes
-api/          Vercel entrypoint
-```
+    backend/    FastAPI backend and trading logic
+    frontend/   Static browser interface
+    data/       Safe example calendar data only
+    docs/       Security and deployment notes
+    api/        Vercel entrypoint
 
 ## Local setup
 
-1. Create a virtual environment.
+1. Create a virtual environment and activate it.
+2. Install dependencies: pip install -r requirements.txt
+3. Copy env template: cp .env.example .env
+4. Fill in optional API keys in .env. Do not commit .env.
+5. Start the app: python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+6. Open: http://127.0.0.1:8000
 
-```bash
-python -m venv .venv
-```
+## Authentication
 
-2. Activate it.
+The app requires a username and passcode to access journal and paper-trade data. Configure via environment variables:
 
-Windows:
+- AUTH_ALLOWED_USERS: comma-separated list of usernames (default: Jake,Jordan)
+- AUTH_PASSCODE: shared access code for all users (required; set in Vercel env vars)
+- AUTH_TOKEN_SECRET: signing key for session tokens (set a strong random value in production)
+- AUTH_TOKEN_TTL_SECONDS: session duration in seconds (default: 86400)
 
-```bash
-.venv\\Scripts\\activate
-```
+## Database setup
 
-macOS/Linux:
+For local development, SQLite is used automatically in data/fx_copilot.sqlite3.
 
-```bash
-source .venv/bin/activate
-```
+For production (Vercel or other hosted environments), set DATABASE_URL to a Postgres connection string. The app will refuse to start on Vercel without this, because Vercel's filesystem is ephemeral.
 
-3. Install dependencies.
-
-```bash
-pip install -r requirements.txt
-```
-
-4. Create your local environment file.
-
-```bash
-cp .env.example .env
-```
-
-5. Fill in optional API keys in `.env`. Do not commit `.env`.
-
-6. Start the app.
-
-```bash
-python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-7. Open the app.
-
-```text
-http://127.0.0.1:8000
-```
+Free Postgres options: Neon (neon.tech), Supabase (supabase.com), Railway (railway.app).
 
 ## GitHub import checklist
 
 Before pushing this project to GitHub, confirm:
 
-- `.env` is not present.
+- .env is not present.
 - No real API keys are present.
 - No OANDA tokens or account IDs are present.
-- No `.sqlite3`, `.db`, `.venv` or `__pycache__` files are present.
+- No .sqlite3, .db, .venv or pycache files are present.
 - The repository is private.
 - Secrets will be added only through hosting-provider environment variables.
 
-## Vercel notes
+## Vercel environment variables
 
-A starter `api/index.py` and `vercel.json` are included. This should be treated as a deployment starting point, not a final production architecture.
+Set the following in your Vercel project before deploying:
 
-For online use, replace local SQLite with hosted Postgres. SQLite is acceptable for local testing, but not ideal for serverless deployment or multi-device platform use.
+- DATABASE_URL: hosted Postgres connection string (required)
+- AUTH_PASSCODE: shared access code
+- AUTH_TOKEN_SECRET: random signing key
+- AUTH_ALLOWED_USERS: e.g. Jake,Jordan
 
 ## Next recommended improvements
 
-1. Move persistence from SQLite to hosted Postgres.
-2. Add authentication before sharing the online app.
-3. Add a formal backtesting module.
-4. Add export/import for journal and paper trades.
-5. Add structured logging and error monitoring.
-6. Add automated tests for strategy scoring, risk calculation and provider fallbacks.
+- Add export/import for journal and paper trades.
+- Add structured logging and error monitoring.
+- Add automated tests for strategy scoring, risk calculation and provider fallbacks.
+- Add a formal backtesting module.
