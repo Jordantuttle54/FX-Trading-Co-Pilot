@@ -1,0 +1,287 @@
+<!doctype html>
+  <html lang="en">
+  <head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>AI FX Trading Agent — Demo Control Centre</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+  <link rel="stylesheet" href="/static/auth.css"/>
+  <link rel="stylesheet" href="/static/agent.css"/>
+  </head>
+  <body>
+
+  <header class="agent-header">
+    <div class="agent-header-inner">
+      <div class="agent-brand">
+        <span class="agent-logo">FX</span>
+        <div>
+          <h1>AI FX Trading Agent</h1>
+          <div class="agent-tagline">Autonomous demo trading — paper/demo mode only</div>
+      </div>
+    </div>
+    <div class="agent-status-strip" id="agentStatusStrip">
+      <span class="status-dot dot-loading" id="statusDot"></span>
+        <span id="statusLabel">Loading...</span>
+        <span class="status-sep">|</span>
+        <span id="killSwitchBadge" class="badge-safe">KILL SWITCH OFF</span>
+        <span class="status-sep">|</span>
+        <span id="windowBadge" class="badge-neutral">CHECKING WINDOW...</span>
+        <span class="status-sep">|</span>
+        <span id="openTradeBadge" class="badge-neutral">0 OPEN TRADES</span>
+      </div>
+      <div class="agent-actions">
+        <button class="btn-danger" id="killSwitchBtn" onclick="toggleKillSwitch()">&#9632; KILL SWITCH</button>
+      <button class="btn-primary" onclick="runScan()">&#9654; SCAN MARKETS</button>
+    </div>
+  </div>
+</header>
+
+  <nav class="agent-nav">
+    <button class="agent-tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+    <button class="agent-tab" data-tab="scanner" onclick="switchTab('scanner')">Scanner</button>
+    <button class="agent-tab" data-tab="trades" onclick="switchTab('trades')">Trades &amp; Journal</button>
+    <button class="agent-tab" data-tab="calendar" onclick="switchTab('calendar')">Calendar &amp; News</button>
+    <button class="agent-tab" data-tab="performance" onclick="switchTab('performance')">Performance</button>
+    <button class="agent-tab" data-tab="settings" onclick="switchTab('settings')">Settings</button>
+  </nav>
+
+  <main class="agent-main">
+
+    <!-- ===== DASHBOARD TAB ===== -->
+    <section id="tab-dashboard" class="agent-section active">
+
+      <div class="agent-grid-3">
+        <div class="agent-card card-accent-blue">
+          <div class="card-eyebrow">System Mode</div>
+          <div class="card-big-value" id="systemMode">DEMO</div>
+          <div class="card-sub">Live trading locked by default</div>
+      </div>
+      <div class="agent-card card-accent-green">
+        <div class="card-eyebrow">Daily Loss Used</div>
+        <div class="card-big-value" id="dailyLossDisplay">0.00%</div>
+        <div class="card-sub" id="dailyLossLimit">Limit: 1.5%</div>
+        </div>
+        <div class="agent-card card-accent-orange">
+          <div class="card-eyebrow">Weekly Loss Used</div>
+        <div class="card-big-value" id="weeklyLossDisplay">0.00%</div>
+        <div class="card-sub" id="weeklyLossLimit">Limit: 4.0%</div>
+        </div>
+      </div>
+
+      <div class="agent-grid-2">
+        <div class="agent-card">
+          <h2>Trading Status</h2>
+          <div id="tradingStatusPanel" class="status-panel">Loading...</div>
+          <div class="card-actions">
+            <button class="btn-secondary" onclick="loadStatus()">Refresh</button>
+          </div>
+        </div>
+        <div class="agent-card">
+          <h2>Open Trades</h2>
+          <div id="openTradesPanel">Loading...</div>
+        </div>
+      </div>
+
+      <div class="agent-card">
+        <h2>Recent Decisions (Audit Log)</h2>
+      <div id="auditLogPanel" class="audit-log">Loading...</div>
+              <button class="btn-secondary" onclick="loadAuditLog()">Refresh Log</button>
+            </div>
+
+            <div class="agent-grid-2">
+              <div class="agent-card">
+                <h2>Upcoming News Events</h2>
+        <div id="upcomingNewsPanel">Loading...</div>
+      </div>
+      <div class="agent-card">
+        <h2>London Trading Window</h2>
+        <div class="london-clock">
+                  <div class="clock-label">London Time</div>
+                  <div class="clock-display" id="londonClock">--:--</div>
+                  <div id="windowStatus" class="window-status">--</div>
+                  <div class="window-info">Active window: 07:00 – 11:00 UTC</div>
+                </div>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- ===== SCANNER TAB ===== -->
+          <section id="tab-scanner" class="agent-section">
+            <div class="agent-card">
+              <h2>Autonomous Market Scanner</h2>
+      <p class="card-sub">Scans all approved pairs for named setup patterns, checks all risk rules, and identifies trade candidates.</p>
+              <div class="scanner-controls">
+                <label>Account Balance ($)
+          <input type="number" id="scanBalance" value="10000" min="1000" step="500"/>
+                </label>
+                <button class="btn-primary" onclick="runScan()">&#9654; Run Full Scan</button>
+              </div>
+              <div id="scannerStatus" class="scan-status"></div>
+            </div>
+
+            <div id="candidatesSection" style="display:none">
+              <h3 class="section-heading">&#9650; Trade Candidates</h3>
+      <div id="candidatesList" class="candidates-grid"></div>
+            </div>
+
+            <div id="rejectedSection" style="display:none">
+              <h3 class="section-heading muted">&#9660; Rejected Setups</h3>
+      <div id="rejectedList" class="rejected-list"></div>
+            </div>
+
+            <div id="noSetupSection" style="display:none">
+              <h3 class="section-heading muted">&#8212; No Setup Found</h3>
+              <div id="noSetupList" class="no-setup-list"></div>
+            </div>
+
+            <div class="agent-card" style="margin-top:24px">
+              <h2>Recent Scan History</h2>
+      <div id="scanHistoryPanel">
+        <button class="btn-secondary" onclick="loadScanHistory()">Load Scan History</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TRADES TAB ===== -->
+  <section id="tab-trades" class="agent-section">
+    <div class="agent-grid-2">
+      <div class="agent-card">
+        <h2>Open Agent Trades</h2>
+        <div id="openTradesDetail">Loading...</div>
+      </div>
+      <div class="agent-card">
+        <h2>Check &amp; Manage Trades</h2>
+        <p class="card-sub">Enter current prices to check stop/target hits and apply management rules.</p>
+                <div id="managePricesForm">
+                  <p class="muted small">Prices will be populated from the last scan. Edit if needed.</p>
+                  <div id="priceForms"></div>
+                  <button class="btn-primary" onclick="manageTrades()" style="margin-top:12px">Apply Management Rules</button>
+        </div>
+        <div id="manageResult"></div>
+      </div>
+            </div>
+
+            <div class="agent-card">
+              <h2>Trade Journal — All Agent Trades</h2>
+      <div class="journal-filters">
+        <label>Filter: <select id="tradeFilter" onchange="filterTrades()">
+                  <option value="all">All trades</option>
+                  <option value="open">Open</option>
+                  <option value="closed">Closed</option>
+                </select></label>
+                <button class="btn-secondary" onclick="loadAllTrades()">Refresh</button>
+              </div>
+              <div id="tradeJournalPanel" class="trade-journal">Loading...</div>
+            </div>
+
+            <div class="agent-card">
+              <h2>Post-Trade Reviews</h2>
+              <p class="card-sub">Reviews are generated automatically when a trade closes. Click to trigger manual review of any pending trades.</p>
+      <button class="btn-secondary" onclick="reviewPending()">Review All Pending Trades</button>
+              <div id="reviewResult" style="margin-top:12px"></div>
+            </div>
+          </section>
+
+          <!-- ===== CALENDAR TAB ===== -->
+          <section id="tab-calendar" class="agent-section">
+            <div class="agent-card">
+              <h2>Economic Calendar &amp; News Guard</h2>
+      <p class="card-sub">High-impact events within <strong id="blackoutMins">30</strong> minutes of a trade trigger a news blackout. No trades are placed during blackout windows.</p>
+              <div id="calendarPanel">Loading...</div>
+            </div>
+            <div class="agent-card">
+              <h2>Pair News Risk Map</h2>
+              <div id="pairRiskMap" class="pair-risk-map">Loading...</div>
+            </div>
+          </section>
+
+          <!-- ===== PERFORMANCE TAB ===== -->
+          <section id="tab-performance" class="agent-section">
+            <div class="agent-card">
+              <h2>Performance Report</h2>
+              <button class="btn-primary" onclick="loadPerformance()">&#9654; Generate Report</button>
+      <div id="performancePanel" style="margin-top:16px">Click to generate the performance report.</div>
+            </div>
+
+    <div class="agent-card" style="display:none" id="performanceBreakdowns">
+              <div class="perf-grid" id="perfGridPair"></div>
+              <div class="perf-grid" id="perfGridSetup"></div>
+              <div class="perf-grid" id="perfGridSession"></div>
+              <div class="perf-grid" id="perfGridConf"></div>
+            </div>
+
+            <div class="agent-card">
+              <h2>Learning &amp; Optimisation Proposals</h2>
+      <p class="card-sub">Generated from evidence batches (minimum 50 closed trades). Proposals are shown for review only — they are NOT applied automatically.</p>
+      <button class="btn-secondary" onclick="loadProposals()">Generate Proposals</button>
+              <label style="margin-left:16px">
+                <input type="checkbox" id="saveVersionCheck"/> Save as strategy version
+      </label>
+              <div id="proposalsPanel" style="margin-top:16px"></div>
+            </div>
+
+            <div class="agent-card">
+              <h2>Strategy Version History</h2>
+      <button class="btn-secondary" onclick="loadVersions()">Load Version History</button>
+      <div id="versionsPanel" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <!-- ===== SETTINGS TAB ===== -->
+  <section id="tab-settings" class="agent-section">
+            <div class="agent-grid-2">
+              <div class="agent-card">
+                <h2>Risk Rules</h2>
+                <div id="riskRulesPanel">Loading...</div>
+              </div>
+              <div class="agent-card">
+                <h2>Kill Switch</h2>
+                <p class="card-sub">Activate to immediately halt all new trading. Existing trades continue until they hit stop or target.</p>
+        <div id="killSwitchPanel">
+          <div id="killSwitchStatus" class="kill-status-safe">KILL SWITCH IS OFF — Trading active</div>
+                  <div class="kill-controls" style="margin-top:16px">
+                    <button class="btn-danger" onclick="activateKillSwitch()">&#9632; Activate Kill Switch</button>
+                    <button class="btn-safe" onclick="deactivateKillSwitch()" style="margin-left:12px">&#9654; Deactivate Kill Switch</button>
+                  </div>
+                  <label style="display:block;margin-top:16px">Reason:
+            <input type="text" id="killSwitchReason" value="Manual emergency stop" style="width:100%;margin-top:4px"/>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="agent-grid-2">
+              <div class="agent-card">
+                <h2>Watchlist</h2>
+                <div id="watchlistPanel">Loading...</div>
+              </div>
+              <div class="agent-card">
+                <h2>API &amp; Provider Status</h2>
+        <div id="providerPanel">Loading...</div>
+      </div>
+    </div>
+    <div class="agent-card">
+              <h2>Demo Mode Notice</h2>
+      <div class="safety-notice">
+        <strong>&#9888; LIVE TRADING IS LOCKED</strong><br/>
+        This system runs on demo/paper mode only. The environment flag
+        <code>ENABLE_LIVE_TRADING</code> is set to <code>false</code> by default and must remain so
+        for the entire 6-month forward testing period.<br/><br/>
+                Do not consider live trading until:
+              <ul>
+                          <li>Minimum 6 months of demo forward testing is complete</li>
+          <li>The journal is complete and auditable</li>
+          <li>Positive expectancy is confirmed after realistic spreads</li>
+          <li>Drawdown is controlled and within limits</li>
+                  <li>The AI has not breached any hard risk rules</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+        </main>
+
+        <script src="/static/agent.js"></script>
+        </body>
+        </html>
+        
