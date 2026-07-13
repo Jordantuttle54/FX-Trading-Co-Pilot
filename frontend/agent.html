@@ -6,6 +6,7 @@
   <title>AI FX Trading Agent - Paper Trading Control Centre</title>
   <link rel="stylesheet" href="/static/auth.css"/>
   <link rel="stylesheet" href="/static/agent.css"/>
+  <link rel="stylesheet" href="/static/agent_unified.css"/>
 </head>
 <body>
 
@@ -36,7 +37,8 @@
 </header>
 
 <nav class="agent-nav">
-  <button class="agent-tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+  <button class="agent-tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Agent Dashboard</button>
+  <button class="agent-tab" data-tab="copilot" onclick="switchTab('copilot')">Co-Pilot</button>
   <button class="agent-tab" data-tab="scanner" onclick="switchTab('scanner')">Scanner</button>
   <button class="agent-tab" data-tab="trades" onclick="switchTab('trades')">Trades &amp; Journal</button>
   <button class="agent-tab" data-tab="calendar" onclick="switchTab('calendar')">Calendar &amp; News</button>
@@ -97,6 +99,24 @@
           <div id="windowStatus" class="window-status">--</div>
           <div class="window-info">Active window: 07:00 - 11:00 UTC</div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-copilot" class="agent-section">
+    <div class="agent-card copilot-shell">
+      <div class="copilot-shell-head">
+        <div>
+          <h2>AI FX Co-Pilot Dashboard</h2>
+          <p class="card-sub">The original Co-Pilot decision centre is now embedded here, so you can use the Co-Pilot tools and the Trading Agent from one browser tab.</p>
+        </div>
+        <div class="copilot-shell-actions">
+          <a class="btn-secondary" href="/" target="_blank" rel="noopener">Open full Co-Pilot page</a>
+          <button class="btn-primary" onclick="document.getElementById('copilotFrame').contentWindow.location.reload()">Refresh Co-Pilot</button>
+        </div>
+      </div>
+      <div class="copilot-frame-wrap">
+        <iframe id="copilotFrame" class="copilot-frame" src="/" title="AI FX Co-Pilot Dashboard"></iframe>
       </div>
     </div>
   </section>
