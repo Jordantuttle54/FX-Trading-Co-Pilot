@@ -432,6 +432,7 @@ async function loadCalendar() {
   renderControlCards();
   renderNewsGuard();
   renderV51Panels();
+}
   function renderSelectedPairTable() {
     const el = $("selectedPairTable");
     if (!el) return;
