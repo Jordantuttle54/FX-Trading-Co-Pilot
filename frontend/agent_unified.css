@@ -1,0 +1,69 @@
+/* agent_unified.css - embeds the legacy Co-Pilot dashboard inside the Trading Agent control centre */
+
+#tab-copilot.active {
+  display: block !important;
+}
+
+.copilot-shell {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.copilot-shell-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(88,166,255,.08), rgba(227,179,65,.06));
+}
+
+.copilot-shell-head h2 {
+  margin: 0 0 6px;
+}
+
+.copilot-shell-head p {
+  margin: 0;
+  max-width: 760px;
+}
+
+.copilot-shell-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.copilot-shell-actions a {
+  text-decoration: none;
+}
+
+.copilot-frame-wrap {
+  width: 100%;
+  background: #06101d;
+}
+
+.copilot-frame {
+  display: block;
+  width: 100%;
+  height: min(1120px, calc(100vh - 220px));
+  min-height: 760px;
+  border: 0;
+  background: #06101d;
+}
+
+@media (max-width: 900px) {
+  .copilot-shell-head {
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .copilot-shell-actions {
+    justify-content: flex-start;
+  }
+
+  .copilot-frame {
+    min-height: 720px;
+  }
+}
