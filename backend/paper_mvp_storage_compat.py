@@ -20,6 +20,18 @@ class AgentExecuteCompatRequest(BaseModel):
     candidate: Optional[Dict[str, Any]] = Field(default=None)
 
 
+class LegacyPaperTradeIn(BaseModel):
+    pair: str
+    direction: str
+    entry: float
+    stop_loss: float
+    target: float
+    risk_pct: float = 0.5
+    risk_amount: float = 0.0
+    position_units: float = 0.0
+    notes: str = ""
+
+
 def _remove_routes(path: str, methods: Optional[set[str]] = None) -> None:
     kept = []
     for route in app.router.routes:
@@ -65,6 +77,7 @@ def _ensure_tables() -> bool:
                     )
                     """
                 )
+                # Best-effort copy from legacy tables. Future reads/writes use the agent tables only.
                 cur.execute("SELECT to_regclass('public.paper_trades')")
                 if cur.fetchone()[0]:
                     cur.execute(
@@ -136,7 +149,11 @@ def compat_storage_mode() -> str:
 
 
 def normalise_payload(value: Any) -> Dict[str, Any]:
-    return base.normalise_payload(value)
+    item = base.normalise_payload(value)
+    if str(item.get("status", "")).lower() == "trade_candidate":
+        item["candidate_status"] = "trade_candidate"
+        item["status"] = "open"
+    return item
 
 
 def compat_upsert_trade(item: Dict[str, Any]) -> None:
@@ -147,10 +164,15 @@ def compat_upsert_trade(item: Dict[str, Any]) -> None:
                 return
         base.TRADES.append(item)
         return
+
     trade_id = str(item["id"])
     payload = dict(item)
     payload["id"] = trade_id
-    payload["status"] = item.get("status", "open")
+    if str(payload.get("status", "")).lower() == "trade_candidate":
+        payload["candidate_status"] = "trade_candidate"
+        payload["status"] = "open"
+    payload["status"] = payload.get("status", "open")
+
     with base.db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -189,33 +211,29 @@ def compat_list_trades(user: str, status: Optional[str] = None) -> List[Dict[str
                 else:
                     cur.execute(f"SELECT payload FROM {PAPER_TABLE} WHERE user_name=%s ORDER BY created_at DESC", (user,))
                 rows = [normalise_payload(r[0]) for r in cur.fetchall()]
+
     normalised = []
     for row in rows:
-        item = dict(row)
-        if str(item.get("status", "")).lower() == "trade_candidate":
-            item["candidate_status"] = "trade_candidate"
-            item["status"] = "open"
+        item = normalise_payload(row)
         if status is None or str(item.get("status", "")).lower() == status.lower():
             normalised.append(item)
     return sorted(normalised, key=lambda x: x.get("created_at", ""), reverse=True)
 
 
 def compat_get_trade(user: str, trade_id: str) -> Dict[str, Any]:
+    if str(trade_id).lower() in {"open", "closed", "status", "stats"}:
+        raise HTTPException(status_code=400, detail="Reserved trade route segment used as trade id.")
     if not _ensure_tables():
         for t in base.TRADES:
             if str(t.get("id")) == str(trade_id) and t.get("user_name") == user:
-                return t
+                return normalise_payload(t)
     else:
         with base.db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(f"SELECT payload FROM {PAPER_TABLE} WHERE user_name=%s AND id=%s", (user, str(trade_id)))
                 row = cur.fetchone()
                 if row:
-                    item = normalise_payload(row[0])
-                    if str(item.get("status", "")).lower() == "trade_candidate":
-                        item["candidate_status"] = "trade_candidate"
-                        item["status"] = "open"
-                    return item
+                    return normalise_payload(row[0])
     raise HTTPException(status_code=404, detail="Trade not found")
 
 
@@ -285,7 +303,7 @@ def compat_list_audit(user: str) -> List[Dict[str, Any]]:
             return [normalise_payload(r[0]) for r in cur.fetchall()]
 
 
-# Monkeypatch the base module so existing management/review functions use the safe table.
+# Make all legacy management/review functions use the compatible table.
 _ensure_tables()
 base.db_upsert_trade = compat_upsert_trade
 base.list_trades = compat_list_trades
@@ -320,17 +338,47 @@ def _paper_stats(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+# Remove old routes, including the dynamic route that was capturing /api/agent/trades/open as trade_id="open".
 for path, methods in [
+    ("/api/agent/status", {"GET"}),
     ("/api/agent/execute", {"POST"}),
     ("/api/agent/trades/open", {"GET"}),
     ("/api/agent/trades", {"GET"}),
     ("/api/agent/trades/closed", {"GET"}),
+    ("/api/agent/trades/{trade_id}", {"GET"}),
     ("/api/agent/manage", {"POST"}),
     ("/api/agent/audit", {"GET"}),
     ("/api/paper/stats", {"GET"}),
     ("/api/paper-trades", {"GET", "POST"}),
 ]:
     _remove_routes(path, methods)
+
+
+@app.get("/api/agent/status")
+async def agent_status_storage_compat(user: str = Depends(base.current_user)):
+    open_trades = compat_list_trades(user, "open")
+    return {
+        "version": "0.7.4-storage-compat-routefix",
+        "user": user,
+        "storage_mode": compat_storage_mode(),
+        "live_trading_enabled": False,
+        "live_trading_locked": True,
+        "paper_trading": True,
+        "kill_switch_active": base.KILL_SWITCH["active"],
+        "kill_switch_reason": base.KILL_SWITCH["reason"],
+        "london_window_now": base.london_window(),
+        "session": base.session_label(),
+        "open_trade_count": len(open_trades),
+        "open_trades": open_trades,
+        "trading_allowed": {
+            "allowed": not base.KILL_SWITCH["active"],
+            "reason": base.KILL_SWITCH["reason"] if base.KILL_SWITCH["active"] else None,
+            "daily_loss_pct": 0.0,
+            "weekly_loss_pct": 0.0,
+            "daily_limit": base.DAILY_LIMIT,
+            "weekly_limit": base.WEEKLY_LIMIT,
+        },
+    }
 
 
 @app.post("/api/agent/execute")
@@ -343,12 +391,29 @@ async def agent_execute_storage_compat(req: AgentExecuteCompatRequest, user: str
         compat_add_audit(user, "paper_execute", "opened", "Paper trade opened. No real order was sent.", req.pair, str(trade["id"]))
     except Exception:
         pass
-    return {"trade_id": trade["id"], "execution": {"mode": "paper", "status": "filled", "order_id": trade.get("order_id"), "live_money": False}, "candidate": candidate, "trade": trade, "storage_mode": compat_storage_mode()}
+    return {
+        "trade_id": trade["id"],
+        "execution": {"mode": "paper", "status": "filled", "order_id": trade.get("order_id"), "live_money": False},
+        "candidate": candidate,
+        "trade": trade,
+        "storage_mode": compat_storage_mode(),
+    }
 
 
 @app.get("/api/agent/trades/open")
 async def agent_open_trades_storage_compat(user: str = Depends(base.current_user)):
-    return {"open_trades": compat_list_trades(user, "open"), "trading_allowed": {"allowed": not base.KILL_SWITCH["active"], "daily_loss_pct": 0.0, "weekly_loss_pct": 0.0, "daily_limit": base.DAILY_LIMIT, "weekly_limit": base.WEEKLY_LIMIT}, "kill_switch": base.KILL_SWITCH["active"], "storage_mode": compat_storage_mode()}
+    return {
+        "open_trades": compat_list_trades(user, "open"),
+        "trading_allowed": {
+            "allowed": not base.KILL_SWITCH["active"],
+            "daily_loss_pct": 0.0,
+            "weekly_loss_pct": 0.0,
+            "daily_limit": base.DAILY_LIMIT,
+            "weekly_limit": base.WEEKLY_LIMIT,
+        },
+        "kill_switch": base.KILL_SWITCH["active"],
+        "storage_mode": compat_storage_mode(),
+    }
 
 
 @app.get("/api/agent/trades")
@@ -361,10 +426,20 @@ async def agent_closed_trades_storage_compat(user: str = Depends(base.current_us
     return compat_list_trades(user, "closed")
 
 
+@app.get("/api/agent/trades/{trade_id}")
+async def agent_get_trade_storage_compat(trade_id: str, user: str = Depends(base.current_user)):
+    return compat_get_trade(user, trade_id)
+
+
 @app.post("/api/agent/manage")
 async def agent_manage_storage_compat(req: base.ManageTradesRequest, user: str = Depends(base.current_user)):
     actions = base.manage_trades(user, req.current_prices or None)
-    return {"actions_taken": actions, "open_trades": compat_list_trades(user, "open"), "snapshot": base.snapshot(), "storage_mode": compat_storage_mode()}
+    return {
+        "actions_taken": actions,
+        "open_trades": compat_list_trades(user, "open"),
+        "snapshot": base.snapshot(),
+        "storage_mode": compat_storage_mode(),
+    }
 
 
 @app.get("/api/agent/audit")
@@ -382,3 +457,33 @@ async def paper_stats_storage_compat(user: str = Depends(base.current_user)):
 async def legacy_paper_trades_storage_compat(user: str = Depends(base.current_user)):
     rows = compat_list_trades(user)
     return {"rows": rows, "stats": _paper_stats(rows), "storage_mode": compat_storage_mode()}
+
+
+@app.post("/api/paper-trades")
+async def legacy_paper_trade_add_storage_compat(req: LegacyPaperTradeIn, user: str = Depends(base.current_user)):
+    trade = compat_save_trade(
+        user,
+        {
+            "pair": req.pair,
+            "direction": req.direction.lower(),
+            "setup_type": "manual_copilot_paper_trade",
+            "setup_label": "Manual Co-Pilot paper trade",
+            "confidence": 0,
+            "rr_estimate": 0,
+            "entry": req.entry,
+            "entry_price": req.entry,
+            "stop_loss": req.stop_loss,
+            "target": req.target,
+            "take_profit": req.target,
+            "risk_pct": req.risk_pct,
+            "risk_amount": req.risk_amount,
+            "position_units": req.position_units,
+            "account_balance": base.START_BALANCE,
+            "entry_reason": req.notes or "Manual paper trade opened from Co-Pilot page.",
+            "notes": req.notes,
+            "source": "manual-copilot",
+            "status": "trade_candidate",
+        },
+    )
+    rows = compat_list_trades(user)
+    return {"row": trade, "rows": rows, "stats": _paper_stats(rows), "storage_mode": compat_storage_mode()}
