@@ -394,6 +394,10 @@ async def market_snap():
 async def market_analysis():
     return {"generated_at": now(), "pairs": [analyse(p) for p in WATCHLIST], "warnings": [] if oanda_configured() else ["Synthetic fallback analysis. Add OANDA practice credentials for live candle data."]}
 
+@app.get("/api/market/candles")
+async def market_candles(pair: str = "GBP/USD", interval: str = "1h", count: int = 120):
+    return {"pair": pair, "provider": "oanda" if oanda_configured() else "synthetic-fallback", "candles": get_candles(pair), "warning": "" if oanda_configured() else "Synthetic fallback data. Add OANDA practice credentials for live candle data."}
+
 @app.get("/api/calendar")
 async def calendar():
     today = datetime.utcnow().date().isoformat()
