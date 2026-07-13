@@ -35,6 +35,10 @@ document.querySelectorAll(".tab").forEach(btn => {
   });
 });
 
+document.addEventListener("change", (e) => {
+  if (e.target && e.target.id === "chartPair") renderSelectedPairTable();
+});
+
 function badge(text, tone="blue") {
   return `<span class="badge ${tone}">${text}</span>`;
 }
@@ -406,6 +410,7 @@ async function loadSnapshot() {
   latestSnapshot = await api("/api/market/snapshot");
   markFresh("market");
   $("marketWarnings").innerHTML = warningsHtml(latestSnapshot.warnings);
+  renderSelectedPairTable();
 }
 
 async function loadCalendar() {
@@ -427,8 +432,40 @@ async function loadCalendar() {
   renderControlCards();
   renderNewsGuard();
   renderV51Panels();
+  function renderSelectedPairTable() {
+    const el = $("selectedPairTable");
+    if (!el) return;
+    const pair = $("chartPair") ? $("chartPair").value : null;
+    if (!pair) {
+      el.innerHTML = `<tr><td class="muted small">Choose a pair above to see live market detail.</td></tr>`;
+      return;
+    }
+    const quote = (latestSnapshot?.quotes || []).find(q => q.pair === pair) || {};
+    const analysis = (latestAnalysis?.pairs || []).find(p => p.pair === pair) || {};
+    const permission = pairPermission(pair);
+    const news = pairNewsInfo(pair);
+    const change = quote.change_pct;
+    const changeTone = (change === null || change === undefined) ? "amber" : (Number(change) > 0 ? "green" : Number(change) < 0 ? "red" : "amber");
+    const spread = (quote.spread_pips === null || quote.spread_pips === undefined) ? "-" : Number(quote.spread_pips).toFixed(1);
+    const changeText = (change === null || change === undefined) ? "-" : `${change}%`;
+    el.innerHTML = `
+    <tr><th>Pair</th><td>${escapeHtml(pair)}</td><th>Status</th><td>${badge(permission.status, permission.tone)}</td></tr>
+    <tr><th>Price</th><td>${fmt(quote.price, pair)}</td><th>Source</th><td>${escapeHtml(quote.source || "-")}</td></tr>
+    <tr><th>Bid</th><td>${fmt(quote.bid, pair)}</td><th>Ask</th><td>${fmt(quote.ask, pair)}</td></tr>
+    <tr><th>Spread (pips)</th><td>${spread}</td><th>Change %</th><td>${badge(changeText, changeTone)}</td></tr>
+    <tr><th>Bias</th><td>${badge(analysis.bias || "Neutral", toneFromBias(analysis.bias))}</td><th>Trend</th><td>${escapeHtml(analysis.trend || "-")}</td></tr>
+    <tr><th>Volatility</th><td>${escapeHtml(analysis.volatility || "-")}</td><th>News</th><td>${escapeHtml(news.text || "-")}</td></tr>
+    <tr><th>Updated</th><td colspan="3">${timeAgo(freshness.market)}</td></tr>
+    `;
+  }
+  
+async function loadConfig() {
+  config = await api("/api/config");
+  markFresh("config");
+  fillSelects();
+  renderSystemStatus();
 }
-
+  
 async function loadAnalysis() {
   latestAnalysis = await api("/api/market/analysis?interval=1h");
   markFresh("analysis");
@@ -452,6 +489,7 @@ async function loadAnalysis() {
     </div>`;
   }).join("");
   renderV51Panels();
+  renderSelectedPairTable();
 }
 
 async function loadBriefing() {
@@ -717,6 +755,8 @@ async function init() {
   await loadConfig();
   await refreshAll();
   await calculateRisk();
+  renderSelectedPairTable();
+  setInterval(refreshAll, 30000);
 }
 
 init();
