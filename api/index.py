@@ -1,1 +1,1 @@
-from backend.paper_mvp_trade_status_fix import app
+from backend.paper_mvp_storage_compat import app
