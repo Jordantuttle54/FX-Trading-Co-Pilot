@@ -198,7 +198,7 @@ def get_open_agent_trades() -> List[Dict[str, Any]]:
                 rows = conn.execute(
                               select(agent_trades).where(agent_trades.c.status == "open")
                 ).fetchall()
-            return [_row(r) for r in rows]
+        return [_row(r) for r in rows]
 
 
 def get_all_agent_trades(limit: int = 500) -> List[Dict[str, Any]]:
