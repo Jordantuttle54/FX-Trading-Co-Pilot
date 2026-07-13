@@ -77,6 +77,19 @@ def _candidate_from_request(req: AgentExecuteRequestFixed) -> Dict[str, Any]:
     return candidate
 
 
+def _trade_payload_from_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert scanner candidate fields into an actually-open paper trade.
+
+    Scanner rows use status=trade_candidate. If that value is saved directly, the
+    open-trades panel and management engine cannot see it. Preserve the scanner
+    status separately and force the paper-trade lifecycle status to open.
+    """
+    payload = dict(candidate)
+    payload["candidate_status"] = candidate.get("status")
+    payload["status"] = "open"
+    return payload
+
+
 _remove_existing_execute_route()
 
 
@@ -87,7 +100,7 @@ async def agent_execute_fixed(req: AgentExecuteRequestFixed, user: str = Depends
 
     try:
         candidate = _candidate_from_request(req)
-        trade = save_trade(user, candidate)
+        trade = save_trade(user, _trade_payload_from_candidate(candidate))
     except HTTPException:
         raise
     except Exception as exc:
