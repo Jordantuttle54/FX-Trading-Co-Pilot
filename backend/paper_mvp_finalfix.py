@@ -47,12 +47,40 @@ class AutomationReadinessLegacyIn(BaseModel):
     win_rate_pct: float = 0
 
 
+def _coerce_id_column_to_text(cur, table_name: str) -> None:
+    """Convert legacy integer/uuid id columns to TEXT so UUID strings can be saved.
+
+    Early versions of the database used integer IDs for some paper tables. The
+    current paper-trading engine uses string UUIDs. CREATE TABLE IF NOT EXISTS
+    does not change an existing column type, so the first insert failed with:
+    "invalid input syntax for type integer". This migration is safe to rerun.
+    """
+    cur.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = %s
+                  AND column_name = 'id'
+                  AND data_type <> 'text'
+            ) THEN
+                EXECUTE format('ALTER TABLE %I ALTER COLUMN id DROP DEFAULT', %s);
+                EXECUTE format('ALTER TABLE %I ALTER COLUMN id TYPE TEXT USING id::text', %s);
+            END IF;
+        END $$;
+        """,
+        (table_name, table_name, table_name, table_name),
+    )
+
+
 def _run_schema_migrations() -> None:
     """Make existing Postgres tables match the current paper-trading code.
 
-    Early MVP deployments created paper_trades without updated_at. CREATE TABLE IF NOT
-    EXISTS does not add missing columns, so paper execution failed after the first
-    persistent-storage rollout. These ALTER statements are safe to rerun.
+    Early MVP deployments created tables with slightly different schemas. These
+    ALTER statements are designed to be safe to rerun on every cold start.
     """
     if not base.DATABASE_URL:
         return
@@ -72,6 +100,7 @@ def _run_schema_migrations() -> None:
                     )
                     """
                 )
+                _coerce_id_column_to_text(cur, "paper_trades")
                 cur.execute("ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS user_name TEXT")
                 cur.execute("ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS status TEXT")
                 cur.execute("ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS pair TEXT")
@@ -97,6 +126,7 @@ def _run_schema_migrations() -> None:
                     )
                     """
                 )
+                _coerce_id_column_to_text(cur, "agent_audit")
                 cur.execute("ALTER TABLE agent_audit ADD COLUMN IF NOT EXISTS user_name TEXT")
                 cur.execute("ALTER TABLE agent_audit ADD COLUMN IF NOT EXISTS created_at TEXT")
                 cur.execute("ALTER TABLE agent_audit ADD COLUMN IF NOT EXISTS event_type TEXT")
