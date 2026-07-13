@@ -1,1 +1,1 @@
-from backend.main import app
+from backend.paper_mvp import app
