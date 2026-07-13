@@ -757,7 +757,7 @@ async function init() {
   await refreshAll();
   await calculateRisk();
   renderSelectedPairTable();
-  setInterval(refreshAll, 30000);
+  setInterval(() => { loadSnapshot(); loadAnalysis(); }, 30000);
 }
 
 init();
