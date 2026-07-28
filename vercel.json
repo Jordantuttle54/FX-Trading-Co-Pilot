@@ -4,6 +4,7 @@
     { "src": "api/index.py", "use": "@vercel/python" }
   ],
   "routes": [
+    { "src": "/", "status": 307, "headers": { "Location": "/fx-agent" } },
     { "src": "/api/(.*)", "dest": "api/index.py" },
     { "src": "/static/(.*)", "dest": "api/index.py" },
     { "src": "/(.*)", "dest": "api/index.py" }
