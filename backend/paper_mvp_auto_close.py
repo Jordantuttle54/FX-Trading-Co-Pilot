@@ -147,6 +147,7 @@ for path, methods in [
     ("/api/agent/chart/tick", {"GET"}),
     ("/api/agent/chart/candles", {"GET"}),
     ("/api/agent/trades/auto-close-check", {"GET", "POST"}),
+    ("/api/agent/trades/{trade_id}", {"GET"}),
 ]:
     compat._remove_routes(path, methods)
 
@@ -202,3 +203,8 @@ async def auto_close_check_get(
 @app.post("/api/agent/trades/auto-close-check")
 async def auto_close_check_post(req: AutoCloseRequest, user: str = Depends(base.current_user)):
     return await auto_close_check_get(req.pair, user)
+
+
+@app.get("/api/agent/trades/{trade_id}")
+async def agent_get_trade_after_auto_close(trade_id: str, user: str = Depends(base.current_user)):
+    return names.name_trade(user, compat.compat_get_trade(user, trade_id))
