@@ -68,17 +68,18 @@
       );
       let forceDuplicate = false;
       if (duplicate) {
-        forceDuplicate = confirm(`You already have an open ${String(direction).toUpperCase()} paper trade on ${pair}.\n\nExisting trade ID: ${duplicate.id}\n\nOpen another paper trade anyway?`);
+        forceDuplicate = confirm(`You already have an open ${String(direction).toUpperCase()} paper trade on ${pair}.\n\nExisting trade ID: ${duplicate.display_name || duplicate.id}\n\nOpen another paper trade anyway?`);
         if (!forceDuplicate) return;
       }
       if (!confirm(`Place a PAPER trade on ${pair}?\n\nNo real money is involved. Live trading remains locked.`)) return;
       const result = await phase1Post('/api/agent/execute', { pair, account_balance: balance, candidate, force_duplicate: forceDuplicate });
-      alert(`Paper trade placed!\nTrade ID: ${result.trade_id}\nMode: ${result.execution?.mode}\nOrder: ${result.execution?.order_id}`);
+      const tradeName = result.trade?.display_name || result.display_name || result.trade_id;
+      alert(`Paper trade placed!\nTrade: ${tradeName}\nMode: ${result.execution?.mode}\nOrder: ${result.execution?.order_id}`);
       await refreshTradingUi();
     } catch (e) {
       if (e.status === 409 && e.detail) {
         const d = e.detail;
-        alert(`Duplicate paper trade blocked.\n\n${d.message || 'Duplicate open trade found.'}\nExisting trade ID: ${d.duplicate_trade_id || 'unknown'}`);
+        alert(`Duplicate paper trade blocked.\n\n${d.message || 'Duplicate open trade found.'}\nExisting trade: ${d.duplicate_display_name || d.duplicate_trade_id || 'unknown'}`);
         return;
       }
       alert(`Paper trade failed: ${safeJsonError(e)}`);
@@ -98,14 +99,19 @@
       const direction = String(t.direction || '').toLowerCase();
       const directionLabel = direction ? direction.toUpperCase() : 'TRADE';
       const price = t.entry_price || t.entry || '';
+      const displayName = t.display_name || t.friendly_name || t.pair || '';
+      const shortId = t.short_trade_id || id.slice(0, 8);
       return `
         <div class="open-trade-card" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
-            <strong>${t.pair || ''}</strong>
+            <div>
+              <strong>${displayName}</strong>
+              <div class="small muted">ID: ${shortId}</div>
+            </div>
             <span class="candidate-dir dir-${direction}">${directionLabel}</span>
           </div>
           <div class="small muted" style="margin-top:8px;line-height:1.7;">
-            Entry: ${price || '?'} &nbsp;|&nbsp; SL: ${t.stop_loss || '?'} &nbsp;|&nbsp; TP: ${t.take_profit || t.target || '?'}<br>
+            Pair: ${t.pair || ''} &nbsp;|&nbsp; Entry: ${price || '?'} &nbsp;|&nbsp; SL: ${t.stop_loss || '?'} &nbsp;|&nbsp; TP: ${t.take_profit || t.target || '?'}<br>
             Setup: ${t.setup_label || t.setup_type || ''} &nbsp;|&nbsp; Confidence: ${t.confidence || 0}%<br>
             Opened: ${t.filled_at || t.created_at || ''}
           </div>
@@ -126,7 +132,7 @@
     try {
       const result = await phase1Post(`/api/agent/trades/${encodeURIComponent(tradeId)}/close`, { close_price: closePrice, reason: 'Manual close from dashboard' });
       const closed = result.closed_trade || {};
-      alert(`Paper trade closed.\nResult: ${closed.result_r || 0}R\nEstimated P/L: ${closed.result_money || 0}`);
+      alert(`Paper trade closed.\nTrade: ${closed.display_name || closed.friendly_name || closed.id || tradeId}\nResult: ${closed.result_r || 0}R\nEstimated P/L: ${closed.result_money || 0}`);
       await refreshTradingUi();
     } catch (e) {
       alert(`Manual close failed: ${safeJsonError(e)}`);
@@ -199,6 +205,7 @@
   function injectEnhancementScripts() {
     injectScript('/static/agent_chart.js');
     injectScript('/static/agent_quick_trade.js');
+    injectScript('/static/agent_trade_names.js');
   }
 
   function initPhase1Ui() {
