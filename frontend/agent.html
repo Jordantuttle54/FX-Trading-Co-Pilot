@@ -240,6 +240,27 @@
       </div>
     </div>
     <div class="agent-card">
+      <h2>Wallet &amp; Account Settings</h2>
+      <p class="card-sub">Paper wallet only &mdash; deposits and withdrawals adjust your simulated balance, no real money moves.</p>
+      <div id="walletSummaryPanel">Loading...</div>
+      <div class="wallet-actions">
+        <div class="wallet-action-group">
+          <label>Deposit amount
+            <input type="number" id="walletDepositAmount" min="0" step="0.01" placeholder="500.00"/>
+          </label>
+          <button class="btn-safe" onclick="depositWallet()">Deposit</button>
+        </div>
+        <div class="wallet-action-group">
+          <label>Withdraw amount
+            <input type="number" id="walletWithdrawAmount" min="0" step="0.01" placeholder="200.00"/>
+          </label>
+          <button class="btn-danger" onclick="withdrawWallet()">Withdraw</button>
+        </div>
+      </div>
+      <div id="walletActionResult" class="small" style="margin-top:8px"></div>
+      <div id="walletTransactionsPanel" style="margin-top:16px"></div>
+    </div>
+    <div class="agent-card">
       <h2>Paper Mode Notice</h2>
       <div class="safety-notice">
         <strong>&#9888; LIVE TRADING IS LOCKED</strong><br/>

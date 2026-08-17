@@ -1,1 +1,1 @@
-from backend.paper_mvp_auto_close import app
+from backend.paper_mvp_wallet import app

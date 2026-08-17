@@ -401,7 +401,7 @@
     if (candleSeries) candleSeries.setMarkers([]);
   }
 
-  function accountStartBalance() { return num(qs('quickTradeBalance')?.value, num(qs('scanBalance')?.value, 10000)) || 10000; }
+  function accountStartBalance() { return num(window.walletCashBalance, num(qs('quickTradeBalance')?.value, num(qs('scanBalance')?.value, 10000))) || 10000; }
 
   function tradeRiskMoney(trade) {
     const direct = num(trade.risk_amount, num(trade.risk_money, num(trade.money_risked, num(trade.risk_value, null))));
