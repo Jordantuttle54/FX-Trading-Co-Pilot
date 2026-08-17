@@ -19,6 +19,12 @@ def secret_value() -> str:
     return os.getenv("AUTH_PASSCODE", "")
 
 
+def passwordless_login_enabled() -> bool:
+    # Temporary convenience mode while the paper-trading app is still being built/tested.
+    # Set TEMP_PASSWORDLESS_LOGIN=false later to require AUTH_PASSCODE again.
+    return os.getenv("TEMP_PASSWORDLESS_LOGIN", "true").lower() in ("1", "true", "yes", "on")
+
+
 def signing_key() -> bytes:
     return (os.getenv("AUTH_TOKEN_SECRET") or "change-me-in-vercel").encode("utf-8")
 
@@ -27,14 +33,19 @@ def sign(payload: str) -> str:
     return hmac.new(signing_key(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def make_session(username: str, passcode: str) -> dict:
+def make_session(username: str, passcode: str = "") -> dict:
     users = allowed_users()
     key = (username or "").strip().lower()
-    expected = secret_value()
-    if not expected:
-        raise HTTPException(status_code=503, detail="Authentication is not configured")
-    if key not in users or not hmac.compare_digest(passcode or "", expected):
+    if key not in users:
         raise HTTPException(status_code=401, detail="Invalid login")
+
+    if not passwordless_login_enabled():
+        expected = secret_value()
+        if not expected:
+            raise HTTPException(status_code=503, detail="Authentication is not configured")
+        if not hmac.compare_digest(passcode or "", expected):
+            raise HTTPException(status_code=401, detail="Invalid login")
+
     user = users[key]
     expires_at = int(time.time()) + int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "86400"))
     nonce = secrets.token_urlsafe(12)

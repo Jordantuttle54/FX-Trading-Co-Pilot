@@ -76,18 +76,15 @@
     }
     overlay.innerHTML = `
       <div class="auth-card">
-        <div class="pill"><span class="dot"></span> Private workstation</div>
+        <div class="pill"><span class="dot"></span> Temporary no-password mode</div>
         <h1>ALEX Trading Co-Pilot</h1>
-        <p class="muted">Sign in to keep journal, paper-trade and performance records separated by user.</p>
+        <p class="muted">Choose a user to keep journal, paper-trade and performance records separated. Access-code login is temporarily disabled while this is being built.</p>
         <form id="authForm">
           <label>Username
             <select id="authUsername">
               <option>Jordan</option>
               <option>Jake</option>
             </select>
-          </label>
-          <label>Access code
-            <input id="authPasscode" type="password" autocomplete="current-password" />
           </label>
           <button type="submit">Enter workstation</button>
           <div id="authMessage" class="auth-message">${message}</div>
@@ -96,16 +93,15 @@
     document.getElementById("authForm").onsubmit = async (event) => {
       event.preventDefault();
       const username = document.getElementById("authUsername").value;
-      const passcode = document.getElementById("authPasscode").value;
       const msg = document.getElementById("authMessage");
-      msg.textContent = "Checking...";
+      msg.textContent = "Signing in...";
       const res = await rawFetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, passcode })
+        body: JSON.stringify({ username, passcode: "" })
       });
       if (!res.ok) {
-        msg.textContent = "Login failed. Check the username and access code.";
+        msg.textContent = "Login failed. Check the selected username.";
         return;
       }
       const data = await res.json();
