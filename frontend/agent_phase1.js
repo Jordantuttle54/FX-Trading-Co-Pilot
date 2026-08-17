@@ -206,6 +206,7 @@
     injectScript('/static/agent_chart.js');
     injectScript('/static/agent_quick_trade.js');
     injectScript('/static/agent_trade_names.js');
+    injectScript('/static/agent_auto_close.js');
   }
 
   function initPhase1Ui() {
