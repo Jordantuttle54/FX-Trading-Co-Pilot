@@ -1,16 +1,22 @@
-/* agent_chart.js - Phase 1.5 MetaTrader-style paper-trading chart */
+/* agent_chart.js - Phase 1.6 live MetaTrader-style candle updates */
 'use strict';
 
 (function () {
   const CHART_LIB_URL = 'https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js';
   const PAIRS = ['GBP/USD', 'EUR/USD', 'USD/JPY', 'EUR/GBP', 'GBP/JPY', 'XAU/USD'];
   const TIMEFRAMES = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
+  const TF_SECONDS = { M1: 60, M5: 300, M15: 900, H1: 3600, H4: 14400, D: 86400 };
 
   let chart = null;
   let candleSeries = null;
   let chartContainer = null;
-  let activePriceLines = [];
+  let currentPriceLine = null;
+  let tradePriceLines = [];
   let refreshTimer = null;
+  let liveTickTimer = null;
+  let liveCandleEnabled = true;
+  let currentCandles = [];
+  let activeChartMeta = { pair: 'GBP/USD', timeframe: 'H1', provider: 'loading' };
 
   function qs(id) { return document.getElementById(id); }
 
@@ -43,6 +49,8 @@
       .chart-status-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px; }
       .chart-pill { border:1px solid var(--border); background:var(--bg3); border-radius:999px; padding:5px 10px; font-size:12px; color:var(--text-muted); }
       .chart-pill strong { color:var(--text); }
+      .chart-live-on { border-color:rgba(34,197,94,.5); color:#86efac; }
+      .chart-live-off { border-color:rgba(239,68,68,.5); color:#fca5a5; }
       .chart-warning { color:var(--orange); font-size:12px; margin-top:8px; }
       .chart-trade-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-top:14px; }
       .chart-trade-chip { border:1px solid var(--border); background:var(--bg3); border-radius:10px; padding:10px; font-size:12px; }
@@ -80,7 +88,7 @@
     card.id = 'agentChartPanel';
     card.innerHTML = `
       <h2>Live Trade Chart</h2>
-      <p class="card-sub">MetaTrader-style paper-trading chart using OANDA practice candles where available. Live-money trading remains locked.</p>
+      <p class="card-sub">MetaTrader-style paper-trading chart. Live candle mode updates the current candle from the latest price tick. Live-money trading remains locked.</p>
       <div class="chart-toolbar">
         <label>Pair
           <select id="chartPair">${PAIRS.map(p => `<option value="${p}">${p}</option>`).join('')}</select>
@@ -92,7 +100,8 @@
           <select id="chartTradeSelect"><option value="">All open trades on pair</option></select>
         </label>
         <button class="btn-primary" id="chartRefreshBtn" onclick="loadAgentChart()">Refresh Chart</button>
-        <button class="btn-secondary" id="chartAutoBtn" onclick="toggleAgentChartAutoRefresh()">Auto Refresh: Off</button>
+        <button class="btn-secondary" id="chartLiveBtn" onclick="toggleAgentLiveCandle()">Live Candle: On</button>
+        <button class="btn-secondary" id="chartAutoBtn" onclick="toggleAgentChartAutoRefresh()">Full Refresh: Off</button>
       </div>
       <div class="chart-frame">
         <div id="agentLiveChart"></div>
@@ -121,6 +130,12 @@
     return Math.floor(d.getTime() / 1000);
   }
 
+  function bucketTime(epochSeconds, timeframe) {
+    const tf = timeframe || activeChartMeta.timeframe || 'H1';
+    const step = TF_SECONDS[tf] || 3600;
+    return Math.floor(epochSeconds / step) * step;
+  }
+
   function chartData(candles) {
     return (candles || []).map(c => ({
       time: convertTime(c.time),
@@ -128,20 +143,40 @@
       high: Number(c.high),
       low: Number(c.low),
       close: Number(c.close),
-    })).filter(c => Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close));
+    })).filter(c => Number.isFinite(c.time) && Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close));
   }
 
   function clearPriceLines() {
     if (!candleSeries) return;
-    activePriceLines.forEach(line => {
+    if (currentPriceLine) {
+      try { candleSeries.removePriceLine(currentPriceLine); } catch (_) {}
+      currentPriceLine = null;
+    }
+    tradePriceLines.forEach(line => {
       try { candleSeries.removePriceLine(line); } catch (_) {}
     });
-    activePriceLines = [];
+    tradePriceLines = [];
   }
 
-  function addPriceLine(price, title, color, style) {
+  function setCurrentPriceLine(price) {
     if (!candleSeries || !Number.isFinite(Number(price))) return;
-    activePriceLines.push(candleSeries.createPriceLine({
+    if (currentPriceLine) {
+      try { candleSeries.removePriceLine(currentPriceLine); } catch (_) {}
+      currentPriceLine = null;
+    }
+    currentPriceLine = candleSeries.createPriceLine({
+      price: Number(price),
+      color: '#eab308',
+      lineWidth: 2,
+      lineStyle: 2,
+      axisLabelVisible: true,
+      title: 'Current',
+    });
+  }
+
+  function addTradePriceLine(price, title, color, style) {
+    if (!candleSeries || !Number.isFinite(Number(price))) return;
+    tradePriceLines.push(candleSeries.createPriceLine({
       price: Number(price),
       color,
       lineWidth: 2,
@@ -192,21 +227,25 @@
     }
   }
 
-  function renderStatus(data) {
-    const quote = data.current_price || {};
+  function renderStatus(data, liveTick) {
+    const quote = liveTick || data.current_price || {};
     const status = qs('chartStatus');
     if (!status) return;
+    const liveClass = liveCandleEnabled ? 'chart-live-on' : 'chart-live-off';
+    const liveLabel = liveCandleEnabled ? 'On' : 'Off';
     status.innerHTML = `
-      <span class="chart-pill">Pair: <strong>${escapeHtml(data.pair)}</strong></span>
-      <span class="chart-pill">Timeframe: <strong>${escapeHtml(data.timeframe)}</strong></span>
-      <span class="chart-pill">Provider: <strong>${escapeHtml(data.provider)}</strong></span>
+      <span class="chart-pill">Pair: <strong>${escapeHtml(data.pair || activeChartMeta.pair)}</strong></span>
+      <span class="chart-pill">Timeframe: <strong>${escapeHtml(data.timeframe || activeChartMeta.timeframe)}</strong></span>
+      <span class="chart-pill">Provider: <strong>${escapeHtml(data.provider || activeChartMeta.provider)}</strong></span>
       <span class="chart-pill">Price: <strong>${quote.price ?? '--'}</strong></span>
+      <span class="chart-pill">Bid/Ask: <strong>${quote.bid ?? '--'} / ${quote.ask ?? '--'}</strong></span>
       <span class="chart-pill">Spread: <strong>${quote.spread_pips ?? '--'} pips</strong></span>
+      <span class="chart-pill ${liveClass}">Live candle: <strong>${liveLabel}</strong></span>
       <span class="chart-pill">Paper only: <strong>Live locked</strong></span>
     `;
 
     const warningBox = qs('chartWarnings');
-    if (warningBox) {
+    if (warningBox && !liveTick) {
       warningBox.innerHTML = (data.warnings || []).length ? `<div class="chart-warning">${data.warnings.map(escapeHtml).join('<br>')}</div>` : '';
     }
   }
@@ -232,11 +271,11 @@
   function applyOverlays(data) {
     clearPriceLines();
     const quote = data.current_price || {};
-    if (quote.price) addPriceLine(Number(quote.price), 'Current', '#eab308', 2);
+    if (quote.price) setCurrentPriceLine(Number(quote.price));
     (data.trade_lines || []).forEach(t => {
-      addPriceLine(Number(t.entry), `${String(t.direction || '').toUpperCase()} Entry`, '#60a5fa', 0);
-      addPriceLine(Number(t.stop_loss), 'Stop Loss', '#ef4444', 1);
-      addPriceLine(Number(t.take_profit), 'Take Profit', '#22c55e', 1);
+      addTradePriceLine(Number(t.entry), `${String(t.direction || '').toUpperCase()} Entry`, '#60a5fa', 0);
+      addTradePriceLine(Number(t.stop_loss), 'Stop Loss', '#ef4444', 1);
+      addTradePriceLine(Number(t.take_profit), 'Take Profit', '#22c55e', 1);
     });
   }
 
@@ -256,8 +295,68 @@
     candleSeries.setMarkers(markers);
   }
 
+  function updateCurrentCandleFromTick(tick) {
+    if (!candleSeries || !currentCandles.length) return;
+    const price = Number(tick.price);
+    if (!Number.isFinite(price)) return;
+
+    const tickTime = convertTime(tick.timestamp || tick.generated_at || new Date().toISOString());
+    const candleTime = bucketTime(tickTime, activeChartMeta.timeframe);
+    let last = currentCandles[currentCandles.length - 1];
+
+    if (!last || candleTime > last.time) {
+      const previousClose = last ? Number(last.close) : price;
+      last = { time: candleTime, open: previousClose, high: Math.max(previousClose, price), low: Math.min(previousClose, price), close: price };
+      currentCandles.push(last);
+      if (currentCandles.length > 600) currentCandles = currentCandles.slice(-600);
+    } else if (candleTime === last.time) {
+      last = {
+        ...last,
+        high: Math.max(Number(last.high), price),
+        low: Math.min(Number(last.low), price),
+        close: price,
+      };
+      currentCandles[currentCandles.length - 1] = last;
+    } else {
+      last = { ...last, close: price, high: Math.max(Number(last.high), price), low: Math.min(Number(last.low), price) };
+      currentCandles[currentCandles.length - 1] = last;
+    }
+
+    candleSeries.update(last);
+    setCurrentPriceLine(price);
+    renderStatus(activeChartMeta, tick);
+  }
+
+  async function pollLiveTick() {
+    if (!liveCandleEnabled || !candleSeries) return;
+    const pair = qs('chartPair')?.value || activeChartMeta.pair || 'GBP/USD';
+    try {
+      const tick = await chartApi(`/api/agent/chart/tick?pair=${encodeURIComponent(pair)}`);
+      updateCurrentCandleFromTick(tick);
+      if (tick.trade_lines) renderTradeChips(tick.trade_lines);
+    } catch (e) {
+      const warningBox = qs('chartWarnings');
+      if (warningBox) warningBox.innerHTML = `<div class="chart-warning">Live tick update failed: ${escapeHtml(e.message || e)}</div>`;
+    }
+  }
+
+  function stopLiveTicks() {
+    if (liveTickTimer) clearInterval(liveTickTimer);
+    liveTickTimer = null;
+  }
+
+  function startLiveTicks() {
+    stopLiveTicks();
+    const btn = qs('chartLiveBtn');
+    if (btn) btn.textContent = liveCandleEnabled ? 'Live Candle: On' : 'Live Candle: Off';
+    if (!liveCandleEnabled) return;
+    pollLiveTick();
+    liveTickTimer = setInterval(pollLiveTick, 5000);
+  }
+
   window.loadAgentChart = async function loadAgentChart() {
     injectChartPanel();
+    stopLiveTicks();
     const loading = qs('chartLoading');
     const pair = qs('chartPair')?.value || 'GBP/USD';
     const timeframe = qs('chartTimeframe')?.value || 'H1';
@@ -272,12 +371,15 @@
       const data = await chartApi(url);
       const candles = chartData(data.candles);
       if (!candles.length) throw new Error('No candle data returned');
+      currentCandles = candles;
+      activeChartMeta = { ...data, pair: data.pair || pair, timeframe: data.timeframe || timeframe, provider: data.provider || 'unknown' };
       candleSeries.setData(candles);
       chart.timeScale().fitContent();
       applyOverlays(data);
       applyMarkers(data);
       renderStatus(data);
       renderTradeChips(data.trade_lines || []);
+      startLiveTicks();
     } catch (e) {
       const status = qs('chartStatus');
       if (status) status.innerHTML = `<span class="chart-pill">Chart error: <strong>${escapeHtml(e.message || e)}</strong></span>`;
@@ -286,16 +388,25 @@
     }
   };
 
+  window.toggleAgentLiveCandle = function toggleAgentLiveCandle() {
+    liveCandleEnabled = !liveCandleEnabled;
+    const btn = qs('chartLiveBtn');
+    if (btn) btn.textContent = liveCandleEnabled ? 'Live Candle: On' : 'Live Candle: Off';
+    renderStatus(activeChartMeta);
+    if (liveCandleEnabled) startLiveTicks();
+    else stopLiveTicks();
+  };
+
   window.toggleAgentChartAutoRefresh = function toggleAgentChartAutoRefresh() {
     const btn = qs('chartAutoBtn');
     if (refreshTimer) {
       clearInterval(refreshTimer);
       refreshTimer = null;
-      if (btn) btn.textContent = 'Auto Refresh: Off';
+      if (btn) btn.textContent = 'Full Refresh: Off';
       return;
     }
     refreshTimer = setInterval(() => window.loadAgentChart(), 30000);
-    if (btn) btn.textContent = 'Auto Refresh: 30s';
+    if (btn) btn.textContent = 'Full Refresh: 30s';
     window.loadAgentChart();
   };
 
@@ -309,6 +420,8 @@
           injectChartPanel();
           window.loadAgentChart();
         }, 150);
+      } else {
+        stopLiveTicks();
       }
       return result;
     };
