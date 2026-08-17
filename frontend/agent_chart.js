@@ -6,6 +6,7 @@
   const PAIRS = ['GBP/USD', 'EUR/USD', 'USD/JPY', 'EUR/GBP', 'GBP/JPY', 'XAU/USD'];
   const TIMEFRAMES = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
   const TF_SECONDS = { M1: 60, M5: 300, M15: 900, H1: 3600, H4: 14400, D: 86400 };
+  const ALL_TRADES_VALUE = '__all__';
 
   let chart = null;
   let candleSeries = null;
@@ -88,7 +89,7 @@
     card.id = 'agentChartPanel';
     card.innerHTML = `
       <h2>Live Trade Chart</h2>
-      <p class="card-sub">MetaTrader-style paper-trading chart. Live candle mode updates the current candle from the latest price tick. Live-money trading remains locked.</p>
+      <p class="card-sub">Clean paper-trading chart. By default it shows the latest open trade only, with live-money trading locked.</p>
       <div class="chart-toolbar">
         <label>Pair
           <select id="chartPair">${PAIRS.map(p => `<option value="${p}">${p}</option>`).join('')}</select>
@@ -96,8 +97,8 @@
         <label>Timeframe
           <select id="chartTimeframe">${TIMEFRAMES.map(tf => `<option value="${tf}" ${tf === 'H1' ? 'selected' : ''}>${tf}</option>`).join('')}</select>
         </label>
-        <label>Open trade overlay
-          <select id="chartTradeSelect"><option value="">All open trades on pair</option></select>
+        <label>Trade overlay
+          <select id="chartTradeSelect"><option value="">No open trades on pair</option></select>
         </label>
         <button class="btn-primary" id="chartRefreshBtn" onclick="loadAgentChart()">Refresh Chart</button>
         <button class="btn-secondary" id="chartLiveBtn" onclick="toggleAgentLiveCandle()">Live Candle: On</button>
@@ -213,17 +214,68 @@
     });
   }
 
+  function tradeOpenedTime(trade) {
+    return new Date(trade.filled_at || trade.opened_at || trade.created_at || 0).getTime() || 0;
+  }
+
+  function tradeLabel(trade) {
+    const name = trade.display_name || trade.friendly_name || trade.trade_name || '';
+    if (name) return name;
+    const direction = String(trade.direction || '').toUpperCase();
+    const shortId = String(trade.id || '').slice(0, 8);
+    return `${direction || 'TRADE'} ${shortId}`.trim();
+  }
+
+  function selectedOverlayMode() {
+    const selected = qs('chartTradeSelect')?.value || '';
+    if (!selected) return 'None';
+    if (selected === ALL_TRADES_VALUE) return 'All open trades';
+    const selectedText = qs('chartTradeSelect')?.selectedOptions?.[0]?.textContent || 'Selected trade';
+    return selectedText.replace('Latest: ', 'Latest trade');
+  }
+
+  function visibleTradeLines(lines) {
+    const selected = qs('chartTradeSelect')?.value || '';
+    const all = selected === ALL_TRADES_VALUE;
+    if (!selected || all) return lines || [];
+    return (lines || []).filter(t => String(t.id) === String(selected));
+  }
+
   async function updateTradeDropdown(selectedPair) {
     const select = qs('chartTradeSelect');
-    if (!select) return;
+    if (!select) return '';
     try {
       const data = await chartApi('/api/agent/trades/open');
-      const open = (data.open_trades || []).filter(t => t.pair === selectedPair);
+      const open = (data.open_trades || [])
+        .filter(t => t.pair === selectedPair)
+        .sort((a, b) => tradeOpenedTime(b) - tradeOpenedTime(a));
       const current = select.value;
-      select.innerHTML = '<option value="">All open trades on pair</option>' + open.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.direction || '')} ${escapeHtml(t.id || '').slice(0, 8)} - ${escapeHtml(t.setup_label || t.setup_type || 'paper trade')}</option>`).join('');
-      if (open.some(t => String(t.id) === String(current))) select.value = current;
+      if (!open.length) {
+        select.innerHTML = '<option value="">No open trades on pair</option>';
+        select.value = '';
+        return '';
+      }
+      const latest = open[0];
+      const latestId = String(latest.id || '');
+      const specificOptions = open
+        .filter(t => String(t.id || '') !== latestId)
+        .map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(tradeLabel(t))}</option>`)
+        .join('');
+      select.innerHTML = `
+        <option value="${escapeHtml(latestId)}">Latest: ${escapeHtml(tradeLabel(latest))}</option>
+        <option value="${ALL_TRADES_VALUE}">All open trades on pair</option>
+        ${specificOptions}
+      `;
+      if (current === ALL_TRADES_VALUE || open.some(t => String(t.id) === String(current))) {
+        select.value = current;
+      } else {
+        select.value = latestId;
+      }
+      return select.value;
     } catch (_) {
-      select.innerHTML = '<option value="">All open trades on pair</option>';
+      select.innerHTML = '<option value="">No open trades on pair</option>';
+      select.value = '';
+      return '';
     }
   }
 
@@ -236,6 +288,7 @@
     status.innerHTML = `
       <span class="chart-pill">Pair: <strong>${escapeHtml(data.pair || activeChartMeta.pair)}</strong></span>
       <span class="chart-pill">Timeframe: <strong>${escapeHtml(data.timeframe || activeChartMeta.timeframe)}</strong></span>
+      <span class="chart-pill">Overlay: <strong>${escapeHtml(selectedOverlayMode())}</strong></span>
       <span class="chart-pill">Provider: <strong>${escapeHtml(data.provider || activeChartMeta.provider)}</strong></span>
       <span class="chart-pill">Price: <strong>${quote.price ?? '--'}</strong></span>
       <span class="chart-pill">Bid/Ask: <strong>${quote.bid ?? '--'} / ${quote.ask ?? '--'}</strong></span>
@@ -253,11 +306,12 @@
   function renderTradeChips(lines) {
     const el = qs('chartTrades');
     if (!el) return;
-    if (!lines || !lines.length) {
-      el.innerHTML = '<div class="muted small">No open trade lines for this pair. Choose a pair with an open paper trade to show entry, stop and target.</div>';
+    const visible = visibleTradeLines(lines);
+    if (!visible || !visible.length) {
+      el.innerHTML = '<div class="muted small">No open trade overlay for this pair.</div>';
       return;
     }
-    el.innerHTML = lines.map(t => `
+    el.innerHTML = visible.map(t => `
       <div class="chart-trade-chip">
         <strong>${escapeHtml(t.pair)} ${escapeHtml(String(t.direction || '').toUpperCase())}</strong>
         Entry: ${t.entry ?? '?'}<br>
@@ -272,8 +326,9 @@
     clearPriceLines();
     const quote = data.current_price || {};
     if (quote.price) setCurrentPriceLine(Number(quote.price));
-    (data.trade_lines || []).forEach(t => {
-      addTradePriceLine(Number(t.entry), `${String(t.direction || '').toUpperCase()} Entry`, '#60a5fa', 0);
+    visibleTradeLines(data.trade_lines || []).forEach(t => {
+      const direction = String(t.direction || '').toUpperCase();
+      addTradePriceLine(Number(t.entry), `${direction} Entry`, '#60a5fa', 0);
       addTradePriceLine(Number(t.stop_loss), 'Stop Loss', '#ef4444', 1);
       addTradePriceLine(Number(t.take_profit), 'Take Profit', '#22c55e', 1);
     });
@@ -281,7 +336,17 @@
 
   function applyMarkers(data) {
     if (!candleSeries) return;
-    const markers = (data.trade_markers || []).map(m => {
+    const selected = qs('chartTradeSelect')?.value || '';
+    const visibleIds = new Set(visibleTradeLines(data.trade_lines || []).map(t => String(t.id)));
+    const showAll = selected === ALL_TRADES_VALUE;
+    const sourceMarkers = (data.trade_markers || []).filter(m => {
+      const tradeId = String(m.trade_id || '');
+      if (selected && !showAll) return tradeId === String(selected);
+      if (showAll) return visibleIds.has(tradeId) && m.type === 'entry';
+      return false;
+    }).slice(-8);
+
+    const markers = sourceMarkers.map(m => {
       const isExit = m.type === 'exit';
       const isBuy = String(m.direction || '').toLowerCase() === 'buy';
       return {
@@ -289,7 +354,7 @@
         position: isExit ? 'aboveBar' : (isBuy ? 'belowBar' : 'aboveBar'),
         color: isExit ? '#f59e0b' : (isBuy ? '#22c55e' : '#ef4444'),
         shape: isExit ? 'circle' : (isBuy ? 'arrowUp' : 'arrowDown'),
-        text: m.label || (isExit ? 'Exit' : 'Entry'),
+        text: isExit ? 'Exit' : 'Entry',
       };
     }).filter(m => Number.isFinite(m.time));
     candleSeries.setMarkers(markers);
@@ -360,14 +425,15 @@
     const loading = qs('chartLoading');
     const pair = qs('chartPair')?.value || 'GBP/USD';
     const timeframe = qs('chartTimeframe')?.value || 'H1';
-    const tradeId = qs('chartTradeSelect')?.value || '';
     if (loading) loading.style.display = 'flex';
 
     try {
       await loadChartLibrary();
       initChart();
-      await updateTradeDropdown(pair);
-      const url = `/api/agent/chart/candles?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}&count=180${tradeId ? `&trade_id=${encodeURIComponent(tradeId)}` : ''}`;
+      const selectedTradeId = await updateTradeDropdown(pair);
+      const showAll = selectedTradeId === ALL_TRADES_VALUE;
+      const tradeParam = selectedTradeId && !showAll ? `&trade_id=${encodeURIComponent(selectedTradeId)}` : '';
+      const url = `/api/agent/chart/candles?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}&count=180${tradeParam}`;
       const data = await chartApi(url);
       const candles = chartData(data.candles);
       if (!candles.length) throw new Error('No candle data returned');
