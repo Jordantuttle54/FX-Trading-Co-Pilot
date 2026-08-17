@@ -102,10 +102,10 @@
   function init() {
     addStyles();
     hookChartResponses();
-    setTimeout(() => runAutoCloseCheck(selectedPair()), 2500);
+    setTimeout(() => runAutoCloseCheck(''), 2500);
     setInterval(() => {
       hookChartResponses();
-      runAutoCloseCheck(selectedPair());
+      runAutoCloseCheck('');
     }, 10000);
   }
 
