@@ -193,6 +193,11 @@
       if (typeof window.loadAgentChart !== 'function') return;
       try {
         await window.loadAgentChart({ keepTradesCache: true });
+        setTimeout(() => {
+          if (typeof window.loadAgentChart === 'function') {
+            window.loadAgentChart({ keepTradesCache: true });
+          }
+        }, 350);
       } catch (_) {
         // Main chart module handles visible errors.
       }
