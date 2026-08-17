@@ -4,6 +4,8 @@
 (function () {
   const seenAutoCloseIds = new Set();
   let checking = false;
+  let timeframeReloadTimer = null;
+  let lastTimeframeHandledAt = 0;
 
   function qs(id) { return document.getElementById(id); }
 
@@ -99,12 +101,45 @@
     }
   }
 
+  function scheduleStableTimeframeReload() {
+    clearTimeout(timeframeReloadTimer);
+    timeframeReloadTimer = setTimeout(async () => {
+      if (typeof window.loadAgentChart !== 'function') return;
+      try {
+        await window.loadAgentChart({ keepTradesCache: true });
+        setTimeout(() => {
+          if (typeof window.loadAgentChart === 'function') {
+            window.loadAgentChart({ keepTradesCache: true });
+          }
+        }, 350);
+      } catch (_) {
+        // Main chart module handles visible errors.
+      }
+    }, 80);
+  }
+
+  function hookTimeframeChange() {
+    if (document.__agentTimeframeOverlayHooked) return;
+    document.__agentTimeframeOverlayHooked = true;
+    document.addEventListener('change', event => {
+      const target = event.target;
+      if (!target || target.id !== 'chartTimeframe') return;
+      const now = Date.now();
+      if (now - lastTimeframeHandledAt < 120) return;
+      lastTimeframeHandledAt = now;
+      event.stopImmediatePropagation();
+      scheduleStableTimeframeReload();
+    }, true);
+  }
+
   function init() {
     addStyles();
     hookChartResponses();
+    hookTimeframeChange();
     setTimeout(() => runAutoCloseCheck(''), 2500);
     setInterval(() => {
       hookChartResponses();
+      hookTimeframeChange();
       runAutoCloseCheck('');
     }, 10000);
   }
