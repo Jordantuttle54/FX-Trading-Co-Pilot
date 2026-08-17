@@ -1,1 +1,1 @@
-from backend.paper_mvp_phase1_safe import app
+from backend.paper_mvp_chart import app
