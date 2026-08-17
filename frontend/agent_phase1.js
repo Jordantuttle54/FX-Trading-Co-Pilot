@@ -49,6 +49,13 @@
     return data.open_trades || [];
   }
 
+  async function refreshTradingUi() {
+    if (typeof loadStatus === 'function') await loadStatus();
+    if (typeof loadOpenTradesDetail === 'function') await loadOpenTradesDetail();
+    if (typeof loadAllTrades === 'function') await loadAllTrades();
+    if (typeof window.loadAgentChart === 'function') await window.loadAgentChart();
+  }
+
   window.executeTrade = async function executeTradePhase1(pair) {
     const balance = parseFloat(qs('scanBalance')?.value || 10000);
     const candidate = candidateForPair(pair);
@@ -67,10 +74,7 @@
       if (!confirm(`Place a PAPER trade on ${pair}?\n\nNo real money is involved. Live trading remains locked.`)) return;
       const result = await phase1Post('/api/agent/execute', { pair, account_balance: balance, candidate, force_duplicate: forceDuplicate });
       alert(`Paper trade placed!\nTrade ID: ${result.trade_id}\nMode: ${result.execution?.mode}\nOrder: ${result.execution?.order_id}`);
-      if (typeof loadStatus === 'function') await loadStatus();
-      if (typeof loadOpenTradesDetail === 'function') await loadOpenTradesDetail();
-      if (typeof loadAllTrades === 'function') await loadAllTrades();
-      if (typeof window.loadAgentChart === 'function') await window.loadAgentChart();
+      await refreshTradingUi();
     } catch (e) {
       if (e.status === 409 && e.detail) {
         const d = e.detail;
@@ -123,10 +127,7 @@
       const result = await phase1Post(`/api/agent/trades/${encodeURIComponent(tradeId)}/close`, { close_price: closePrice, reason: 'Manual close from dashboard' });
       const closed = result.closed_trade || {};
       alert(`Paper trade closed.\nResult: ${closed.result_r || 0}R\nEstimated P/L: ${closed.result_money || 0}`);
-      if (typeof loadStatus === 'function') await loadStatus();
-      if (typeof loadOpenTradesDetail === 'function') await loadOpenTradesDetail();
-      if (typeof loadAllTrades === 'function') await loadAllTrades();
-      if (typeof window.loadAgentChart === 'function') await window.loadAgentChart();
+      await refreshTradingUi();
     } catch (e) {
       alert(`Manual close failed: ${safeJsonError(e)}`);
     }
@@ -138,10 +139,7 @@
     try {
       const result = await phase1Post('/api/agent/trades/reset', { confirm: true, include_closed: true });
       alert(`Paper test data reset.\nDeleted rows: ${result.deleted_count || 0}`);
-      if (typeof loadStatus === 'function') await loadStatus();
-      if (typeof loadOpenTradesDetail === 'function') await loadOpenTradesDetail();
-      if (typeof loadAllTrades === 'function') await loadAllTrades();
-      if (typeof window.loadAgentChart === 'function') await window.loadAgentChart();
+      await refreshTradingUi();
     } catch (e) {
       alert(`Reset failed: ${safeJsonError(e)}`);
     }
@@ -190,18 +188,23 @@
     tradeSection.appendChild(card);
   }
 
-  function injectChartScript() {
-    if (document.querySelector('script[src="/static/agent_chart.js"]')) return;
+  function injectScript(src) {
+    if (document.querySelector(`script[src="${src}"]`)) return;
     const script = document.createElement('script');
-    script.src = '/static/agent_chart.js';
+    script.src = src;
     script.defer = true;
     document.body.appendChild(script);
+  }
+
+  function injectEnhancementScripts() {
+    injectScript('/static/agent_chart.js');
+    injectScript('/static/agent_quick_trade.js');
   }
 
   function initPhase1Ui() {
     replaceExecuteText(document);
     injectResetButton();
-    injectChartScript();
+    injectEnhancementScripts();
     const observer = new MutationObserver(mutations => {
       mutations.forEach(m => m.addedNodes.forEach(node => {
         if (node && node.nodeType === 1) replaceExecuteText(node);

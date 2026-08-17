@@ -1,1 +1,1 @@
-from backend.paper_mvp_chart import app
+from backend.paper_mvp_quick_trade import app
