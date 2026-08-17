@@ -49,6 +49,13 @@
     return value > 0 ? value : null;
   }
 
+  function selectedQuickCloseTrade() {
+    const select = qs('quickCloseTradeSelect');
+    if (!select || !select.value) return { id: '', pair: '' };
+    const opt = select.options[select.selectedIndex];
+    return { id: select.value, pair: opt?.dataset?.pair || '' };
+  }
+
   function addQuickTradeStyles() {
     if (qs('quickTradeStyles')) return;
     const style = document.createElement('style');
@@ -58,6 +65,7 @@
       .quick-trade-row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
       .quick-trade-row label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
       .quick-trade-row input { width:110px; }
+      .quick-close-select { min-width:260px; max-width:360px; }
       .quick-trade-warning { margin-top:10px; font-size:12px; color:var(--text-muted); }
       .quick-trade-result { margin-top:10px; font-size:12px; }
       .btn-buy { background:#16a34a; border-color:#16a34a; color:white; }
@@ -93,12 +101,19 @@
         <button class="btn-buy" onclick="quickOpenPersonalTrade('buy')">Personal Buy</button>
         <button class="btn-sell" onclick="quickOpenPersonalTrade('sell')">Personal Sell</button>
         <button class="btn-primary" onclick="quickOpenAiTrade()">AI Quick Open</button>
+        <label>Close open trade
+          <select id="quickCloseTradeSelect" class="quick-close-select"><option value="">Loading open trades...</option></select>
+        </label>
+        <button class="btn-quick-close" onclick="quickCloseSelectedTrade()">Quick Close</button>
       </div>
-      <div class="quick-trade-warning">Paper only. Personal trades use the chart pair and latest market quote. AI Quick Open only places a paper trade if the AI scanner returns a valid candidate.</div>
+      <div class="quick-trade-warning">Paper only. Open buttons use the selected chart pair. Quick Close closes the selected open paper trade at the latest available market quote.</div>
       <div id="quickTradeResult" class="quick-trade-result"></div>
     `;
     if (toolbar && toolbar.parentNode) toolbar.parentNode.insertBefore(panel, toolbar.nextSibling);
     else chartPanel.insertBefore(panel, chartPanel.firstChild.nextSibling);
+
+    qs('chartPair')?.addEventListener('change', () => loadQuickCloseChoices());
+    loadQuickCloseChoices();
   }
 
   function showResult(message, isError = false) {
@@ -107,11 +122,43 @@
     el.innerHTML = `<span style="color:${isError ? 'var(--red)' : 'var(--green)'}">${escapeHtml(message)}</span>`;
   }
 
+  async function loadQuickCloseChoices() {
+    const select = qs('quickCloseTradeSelect');
+    if (!select) return;
+    const previous = select.value;
+    try {
+      const data = await api('/api/agent/trades/open');
+      const rows = data.open_trades || [];
+      if (!rows.length) {
+        select.innerHTML = '<option value="">No open trades to close</option>';
+        return;
+      }
+      const chartPair = selectedPair();
+      const sorted = [...rows].sort((a, b) => {
+        const ap = String(a.pair || '') === chartPair ? 0 : 1;
+        const bp = String(b.pair || '') === chartPair ? 0 : 1;
+        return ap - bp;
+      });
+      select.innerHTML = sorted.map(t => {
+        const id = escapeHtml(t.id || '');
+        const pair = escapeHtml(t.pair || '');
+        const dir = escapeHtml(String(t.direction || '').toUpperCase());
+        const entry = escapeHtml(t.entry_price || t.entry || '?');
+        const shortId = escapeHtml(String(t.id || '').slice(0, 8));
+        return `<option value="${id}" data-pair="${pair}">${pair} ${dir} @ ${entry} - ${shortId}</option>`;
+      }).join('');
+      if (sorted.some(t => String(t.id) === String(previous))) select.value = previous;
+    } catch (e) {
+      select.innerHTML = '<option value="">Could not load open trades</option>';
+    }
+  }
+
   async function refreshTradingUi() {
     if (typeof window.loadStatus === 'function') await window.loadStatus();
     if (typeof window.loadOpenTradesDetail === 'function') await window.loadOpenTradesDetail();
     if (typeof window.loadAllTrades === 'function') await window.loadAllTrades();
     if (typeof window.loadAgentChart === 'function') await window.loadAgentChart();
+    await loadQuickCloseChoices();
   }
 
   window.quickOpenPersonalTrade = async function quickOpenPersonalTrade(direction) {
@@ -190,7 +237,10 @@
   };
 
   window.quickCloseTrade = async function quickCloseTrade(tradeId, pair) {
-    if (!tradeId) return;
+    if (!tradeId) {
+      showResult('Choose an open paper trade to quick close.', true);
+      return;
+    }
     if (!confirm(`Quick close paper trade ${String(tradeId).slice(0, 8)} on ${pair || 'this pair'} at latest market price?`)) return;
     try {
       const result = await post(`/api/agent/trades/${encodeURIComponent(tradeId)}/quick-close`, {
@@ -204,57 +254,17 @@
     }
   };
 
-  function enhanceChartTradeChips() {
-    const oldRender = window.renderTradeChips;
-    if (typeof oldRender !== 'function' || oldRender.__quickEnhanced) return;
-    window.renderTradeChips = function renderTradeChipsQuickEnhanced(lines) {
-      oldRender(lines);
-      const el = qs('chartTrades');
-      if (!el || !lines || !lines.length) return;
-      const cards = Array.from(el.querySelectorAll('.chart-trade-chip'));
-      cards.forEach((card, index) => {
-        const trade = lines[index];
-        if (!trade || !trade.id || card.querySelector('.btn-quick-close')) return;
-        const btn = document.createElement('button');
-        btn.className = 'btn-quick-close';
-        btn.style.marginTop = '8px';
-        btn.textContent = 'Quick Close';
-        btn.onclick = () => window.quickCloseTrade(trade.id, trade.pair);
-        card.appendChild(btn);
-      });
-    };
-    window.renderTradeChips.__quickEnhanced = true;
-  }
-
-  function addQuickCloseToOpenCards() {
-    const container = qs('openTradesDetail');
-    if (!container) return;
-    container.querySelectorAll('.open-trade-card').forEach(card => {
-      if (card.querySelector('.btn-quick-close')) return;
-      const manualButton = Array.from(card.querySelectorAll('button')).find(btn => (btn.textContent || '').includes('Manual Close'));
-      if (!manualButton) return;
-      const onclick = manualButton.getAttribute('onclick') || '';
-      const idMatch = onclick.match(/manualCloseTrade\('([^']+)'/);
-      const pairMatch = onclick.match(/manualCloseTrade\('[^']+',\s*'([^']+)'/);
-      const tradeId = idMatch ? idMatch[1] : '';
-      const pair = pairMatch ? pairMatch[1] : '';
-      if (!tradeId) return;
-      const btn = document.createElement('button');
-      btn.className = 'btn-quick-close';
-      btn.textContent = 'Quick Close';
-      btn.onclick = () => window.quickCloseTrade(tradeId, pair);
-      manualButton.parentNode.insertBefore(btn, manualButton.nextSibling);
-    });
-  }
+  window.quickCloseSelectedTrade = async function quickCloseSelectedTrade() {
+    const trade = selectedQuickCloseTrade();
+    await window.quickCloseTrade(trade.id, trade.pair);
+  };
 
   function initQuickTrade() {
     injectQuickTradePanel();
-    enhanceChartTradeChips();
-    addQuickCloseToOpenCards();
+    loadQuickCloseChoices();
     const observer = new MutationObserver(() => {
       injectQuickTradePanel();
-      enhanceChartTradeChips();
-      addQuickCloseToOpenCards();
+      loadQuickCloseChoices();
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
