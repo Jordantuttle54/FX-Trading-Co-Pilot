@@ -709,6 +709,12 @@ function formatWalletMoney(value) {
 function renderWalletSummary(wallet) {
     window.walletBalance = wallet.balance;
     window.walletCashBalance = wallet.cash_balance;
+    // Keep the manual balance inputs in sync so scan/quick-trade sizing risks
+    // against the real wallet balance instead of a stale, disconnected value.
+    const scanBalanceInput = document.getElementById('scanBalance');
+    if (scanBalanceInput) scanBalanceInput.value = wallet.balance;
+    const quickTradeBalanceInput = document.getElementById('quickTradeBalance');
+    if (quickTradeBalanceInput) quickTradeBalanceInput.value = wallet.balance;
     const el = document.getElementById('walletSummaryPanel');
     if (!el) return;
     const pnlColor = wallet.realised_pnl > 0 ? 'var(--green)' : wallet.realised_pnl < 0 ? 'var(--red)' : 'inherit';
