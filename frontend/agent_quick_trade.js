@@ -2,6 +2,10 @@
 'use strict';
 
 (function () {
+  let closeChoicesTimer = null;
+  let closeChoicesLoading = false;
+  let closeChoicesPending = false;
+
   function qs(id) { return document.getElementById(id); }
 
   function escapeHtml(value) {
@@ -45,233 +49,228 @@
   }
 
   function selectedStopPips() {
-    const value = Number(qs('quickTradeStop')?.value || 0);
+    const value = Number(qs('quickTradeStopPips')?.value || 0);
     return value > 0 ? value : null;
   }
 
   function selectedQuickCloseTrade() {
-    const select = qs('quickCloseTradeSelect');
-    if (!select || !select.value) return { id: '', pair: '' };
-    const opt = select.options[select.selectedIndex];
-    return { id: select.value, pair: opt?.dataset?.pair || '' };
+    return qs('quickCloseTradeSelect')?.value || '';
   }
 
-  function addQuickTradeStyles() {
+  function injectStyles() {
     if (qs('quickTradeStyles')) return;
     const style = document.createElement('style');
     style.id = 'quickTradeStyles';
     style.textContent = `
-      .quick-trade-panel { border:1px solid var(--border); background:var(--bg2); border-radius:14px; padding:14px; margin:12px 0 16px; }
-      .quick-trade-row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
-      .quick-trade-row label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
-      .quick-trade-row input { width:110px; }
-      .quick-close-select { min-width:260px; max-width:360px; }
-      .quick-trade-warning { margin-top:10px; font-size:12px; color:var(--text-muted); }
-      .quick-trade-result { margin-top:10px; font-size:12px; }
-      .btn-buy { background:#16a34a; border-color:#16a34a; color:white; }
-      .btn-sell { background:#dc2626; border-color:#dc2626; color:white; }
-      .btn-quick-close { background:#f59e0b; border-color:#f59e0b; color:#111827; }
+      .quick-trade-panel { border:1px solid var(--border); background:rgba(15,23,42,.72); border-radius:14px; padding:14px; margin:16px 0; }
+      .quick-trade-row { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+      .quick-trade-row label { display:flex; flex-direction:column; gap:5px; color:var(--text-muted); font-size:11px; }
+      .quick-trade-row input, .quick-trade-row select { min-width:110px; }
+      .quick-close-select { min-width:260px; }
+      .quick-trade-warning { color:var(--text-muted); font-size:11px; margin-top:10px; }
+      .quick-trade-result { font-size:12px; margin-top:10px; }
+      .btn-buy { background:#16a34a; color:#fff; border:0; border-radius:8px; padding:10px 12px; font-weight:800; cursor:pointer; }
+      .btn-sell { background:#dc2626; color:#fff; border:0; border-radius:8px; padding:10px 12px; font-weight:800; cursor:pointer; }
+      .btn-quick-close { background:#f59e0b; color:#111827; border:0; border-radius:8px; padding:10px 12px; font-weight:800; cursor:pointer; }
     `;
     document.head.appendChild(style);
   }
 
   function injectQuickTradePanel() {
-    addQuickTradeStyles();
+    injectStyles();
     const chartPanel = qs('agentChartPanel');
     if (!chartPanel || qs('quickTradePanel')) return;
-    const toolbar = chartPanel.querySelector('.chart-toolbar');
+
     const panel = document.createElement('div');
     panel.id = 'quickTradePanel';
     panel.className = 'quick-trade-panel';
     panel.innerHTML = `
-      <h3 style="margin:0 0 10px">Quick Paper Trading</h3>
+      <h3 style="font-size:15px;margin:0 0 12px">Quick Paper Trading</h3>
       <div class="quick-trade-row">
         <label>Balance
-          <input id="quickTradeBalance" type="number" min="100" step="100" value="${escapeHtml(qs('scanBalance')?.value || 10000)}">
+          <input id="quickTradeBalance" type="number" value="${escapeHtml(qs('scanBalance')?.value || 10000)}" min="100" step="100">
         </label>
         <label>Risk %
-          <input id="quickTradeRisk" type="number" min="0.01" max="5" step="0.01" value="0.5">
+          <input id="quickTradeRisk" type="number" value="0.5" min="0.01" max="5" step="0.01">
         </label>
         <label>Stop pips
-          <input id="quickTradeStop" type="number" min="1" step="1" value="20">
+          <input id="quickTradeStopPips" type="number" value="10" min="1" step="1">
         </label>
         <label>RR
-          <input id="quickTradeRR" type="number" min="0.5" step="0.1" value="2.0">
+          <input id="quickTradeRR" type="number" value="1" min="0.1" step="0.1">
         </label>
         <button class="btn-buy" onclick="quickOpenPersonalTrade('buy')">Personal Buy</button>
         <button class="btn-sell" onclick="quickOpenPersonalTrade('sell')">Personal Sell</button>
         <button class="btn-primary" onclick="quickOpenAiTrade()">AI Quick Open</button>
         <label>Close open trade
-          <select id="quickCloseTradeSelect" class="quick-close-select"><option value="">Loading open trades...</option></select>
+          <select id="quickCloseTradeSelect" class="quick-close-select"><option value="">Loading...</option></select>
         </label>
         <button class="btn-quick-close" onclick="quickCloseSelectedTrade()">Quick Close</button>
       </div>
       <div class="quick-trade-warning">Paper only. Open buttons use the selected chart pair. Quick Close closes the selected open paper trade at the latest available market quote.</div>
       <div id="quickTradeResult" class="quick-trade-result"></div>
     `;
+
+    const toolbar = chartPanel.querySelector('.chart-toolbar');
     if (toolbar && toolbar.parentNode) toolbar.parentNode.insertBefore(panel, toolbar.nextSibling);
-    else chartPanel.insertBefore(panel, chartPanel.firstChild.nextSibling);
-
-    qs('chartPair')?.addEventListener('change', () => loadQuickCloseChoices());
-    loadQuickCloseChoices();
-  }
-
-  function showResult(message, isError = false) {
-    const el = qs('quickTradeResult');
-    if (!el) return;
-    el.innerHTML = `<span style="color:${isError ? 'var(--red)' : 'var(--green)'}">${escapeHtml(message)}</span>`;
+    else chartPanel.prepend(panel);
+    scheduleQuickCloseChoices(50);
   }
 
   async function loadQuickCloseChoices() {
     const select = qs('quickCloseTradeSelect');
     if (!select) return;
-    const previous = select.value;
+    if (closeChoicesLoading) {
+      closeChoicesPending = true;
+      return;
+    }
+    closeChoicesLoading = true;
     try {
+      const previous = select.value;
       const data = await api('/api/agent/trades/open');
-      const rows = data.open_trades || [];
+      const rows = data.open_trades || data.trades || data.items || [];
       if (!rows.length) {
         select.innerHTML = '<option value="">No open trades to close</option>';
         return;
       }
-      const chartPair = selectedPair();
+      const pair = selectedPair();
       const sorted = [...rows].sort((a, b) => {
-        const ap = String(a.pair || '') === chartPair ? 0 : 1;
-        const bp = String(b.pair || '') === chartPair ? 0 : 1;
+        const ap = a.pair === pair ? 0 : 1;
+        const bp = b.pair === pair ? 0 : 1;
         return ap - bp;
       });
-      select.innerHTML = sorted.map(t => {
-        const id = escapeHtml(t.id || '');
-        const pair = escapeHtml(t.pair || '');
-        const dir = escapeHtml(String(t.direction || '').toUpperCase());
-        const entry = escapeHtml(t.entry_price || t.entry || '?');
-        const shortId = escapeHtml(String(t.id || '').slice(0, 8));
-        return `<option value="${id}" data-pair="${pair}">${pair} ${dir} @ ${entry} - ${shortId}</option>`;
+      select.innerHTML = sorted.map((t) => {
+        const id = String(t.id || '');
+        const name = t.display_name || t.friendly_name || t.trade_name || `${t.pair || ''} ${String(t.direction || '').toUpperCase()} ${id.slice(0, 8)}`;
+        const entry = t.entry_price || t.entry || '?';
+        return `<option value="${escapeHtml(id)}">${escapeHtml(name)} @ ${escapeHtml(entry)}</option>`;
       }).join('');
-      if (sorted.some(t => String(t.id) === String(previous))) select.value = previous;
+      if (previous && sorted.some(t => String(t.id) === String(previous))) select.value = previous;
     } catch (e) {
-      select.innerHTML = '<option value="">Could not load open trades</option>';
+      select.innerHTML = `<option value="">Unable to load open trades</option>`;
+    } finally {
+      closeChoicesLoading = false;
+      if (closeChoicesPending) {
+        closeChoicesPending = false;
+        scheduleQuickCloseChoices(500);
+      }
     }
   }
 
+  function scheduleQuickCloseChoices(delay = 250) {
+    clearTimeout(closeChoicesTimer);
+    closeChoicesTimer = setTimeout(loadQuickCloseChoices, delay);
+  }
+
+  function showResult(message, isError = false) {
+    const el = qs('quickTradeResult');
+    if (!el) return;
+    el.style.color = isError ? 'var(--red)' : 'var(--green)';
+    el.textContent = message;
+  }
+
   async function refreshTradingUi() {
-    if (typeof window.loadStatus === 'function') await window.loadStatus();
-    if (typeof window.loadOpenTradesDetail === 'function') await window.loadOpenTradesDetail();
-    if (typeof window.loadAllTrades === 'function') await window.loadAllTrades();
-    if (typeof window.loadAgentChart === 'function') await window.loadAgentChart();
-    await loadQuickCloseChoices();
+    const jobs = [];
+    if (typeof window.loadStatus === 'function') jobs.push(window.loadStatus());
+    if (typeof window.loadOpenTradesDetail === 'function') jobs.push(window.loadOpenTradesDetail());
+    if (typeof window.loadAllTrades === 'function') jobs.push(window.loadAllTrades());
+    if (typeof window.loadAgentChart === 'function') jobs.push(window.loadAgentChart());
+    jobs.push(loadQuickCloseChoices());
+    await Promise.allSettled(jobs);
   }
 
   window.quickOpenPersonalTrade = async function quickOpenPersonalTrade(direction) {
     const pair = selectedPair();
-    const dirLabel = String(direction).toUpperCase();
-    if (!confirm(`Open PERSONAL PAPER ${dirLabel} on ${pair}?\n\nThis is paper trading only. Live-money trading remains locked.`)) return;
-
-    const body = {
-      pair,
-      direction,
-      account_balance: selectedBalance(),
-      risk_pct: selectedRiskPct(),
-      rr: selectedRR(),
-      stop_pips: selectedStopPips(),
-      force_duplicate: false,
-    };
-
+    if (!confirm(`Open a PERSONAL paper ${String(direction).toUpperCase()} trade on ${pair}?`)) return;
     try {
-      const result = await post('/api/agent/trades/quick-open', body);
-      const trade = result.trade || {};
-      showResult(`Personal paper ${dirLabel} opened on ${trade.pair || pair}. Trade ID: ${trade.id || result.trade_id}`);
+      const payload = {
+        pair,
+        direction,
+        account_balance: selectedBalance(),
+        risk_pct: selectedRiskPct(),
+        rr: selectedRR(),
+        stop_pips: selectedStopPips(),
+      };
+      const result = await post('/api/agent/trades/quick-open', payload);
+      showResult(`Personal paper ${String(direction).toUpperCase()} opened on ${pair}. Trade ID: ${result.trade_id || result.trade?.id || ''}`);
       await refreshTradingUi();
     } catch (e) {
-      if (e.status === 409 && e.detail) {
-        const duplicate = e.detail.duplicate_trade_id || 'unknown';
-        const force = confirm(`${e.detail.message || 'Duplicate open trade found.'}\nExisting trade ID: ${duplicate}\n\nOpen another paper trade anyway?`);
-        if (!force) return;
-        body.force_duplicate = true;
+      if (e.status === 409 && confirm(`A similar trade may already be open. Open another anyway?`)) {
         try {
-          const result = await post('/api/agent/trades/quick-open', body);
-          const trade = result.trade || {};
-          showResult(`Duplicate personal paper ${dirLabel} opened on ${trade.pair || pair}. Trade ID: ${trade.id || result.trade_id}`);
+          const retry = await post('/api/agent/trades/quick-open', {
+            pair,
+            direction,
+            account_balance: selectedBalance(),
+            risk_pct: selectedRiskPct(),
+            rr: selectedRR(),
+            stop_pips: selectedStopPips(),
+            force_duplicate: true,
+          });
+          showResult(`Duplicate paper trade opened. Trade ID: ${retry.trade_id || retry.trade?.id || ''}`);
           await refreshTradingUi();
           return;
-        } catch (inner) {
-          showResult(`Quick open failed: ${inner.message || inner}`, true);
+        } catch (retryError) {
+          showResult(`Open failed: ${retryError.message}`, true);
           return;
         }
       }
-      showResult(`Quick open failed: ${e.message || e}`, true);
+      showResult(`Open failed: ${e.message}`, true);
     }
   };
 
   window.quickOpenAiTrade = async function quickOpenAiTrade() {
     const pair = selectedPair();
-    if (!confirm(`Ask the AI to quick-open a PAPER trade on ${pair}?\n\nIt will only open if the scanner returns a valid candidate. Live trading remains locked.`)) return;
-    const body = { pair, account_balance: selectedBalance(), force_duplicate: false };
-
+    if (!confirm(`Ask AI to open a paper trade on ${pair}?`)) return;
     try {
-      const result = await post('/api/agent/trades/quick-open-ai', body);
-      const trade = result.trade || {};
-      showResult(`AI paper trade opened on ${trade.pair || pair}. Trade ID: ${trade.id || result.trade_id}`);
+      const result = await post('/api/agent/trades/quick-open-ai', { pair, account_balance: selectedBalance() });
+      showResult(`AI paper trade opened on ${pair}. Trade ID: ${result.trade_id || result.trade?.id || ''}`);
       await refreshTradingUi();
     } catch (e) {
-      if (e.status === 409 && e.detail) {
-        if (e.detail.duplicate_trade_id) {
-          const force = confirm(`${e.detail.message || 'Duplicate open AI trade found.'}\nExisting trade ID: ${e.detail.duplicate_trade_id}\n\nOpen another AI paper trade anyway?`);
-          if (!force) return;
-          body.force_duplicate = true;
-          try {
-            const result = await post('/api/agent/trades/quick-open-ai', body);
-            const trade = result.trade || {};
-            showResult(`Duplicate AI paper trade opened on ${trade.pair || pair}. Trade ID: ${trade.id || result.trade_id}`);
-            await refreshTradingUi();
-            return;
-          } catch (inner) {
-            showResult(`AI quick open failed: ${inner.message || inner}`, true);
-            return;
-          }
+      if (e.status === 409 && confirm(`A similar AI trade may already be open. Open another anyway?`)) {
+        try {
+          const retry = await post('/api/agent/trades/quick-open-ai', { pair, account_balance: selectedBalance(), force_duplicate: true });
+          showResult(`Duplicate AI paper trade opened. Trade ID: ${retry.trade_id || retry.trade?.id || ''}`);
+          await refreshTradingUi();
+          return;
+        } catch (retryError) {
+          showResult(`AI open failed: ${retryError.message}`, true);
+          return;
         }
-        showResult(e.detail.message || 'AI did not return a valid trade candidate.', true);
-        return;
       }
-      showResult(`AI quick open failed: ${e.message || e}`, true);
+      showResult(`AI open failed: ${e.message}`, true);
     }
   };
 
-  window.quickCloseTrade = async function quickCloseTrade(tradeId, pair) {
-    if (!tradeId) {
-      showResult('Choose an open paper trade to quick close.', true);
-      return;
-    }
-    if (!confirm(`Quick close paper trade ${String(tradeId).slice(0, 8)} on ${pair || 'this pair'} at latest market price?`)) return;
+  window.quickCloseTrade = async function quickCloseTrade(tradeId) {
+    if (!tradeId) return showResult('Select an open trade to close first.', true);
+    if (!confirm('Quick close this paper trade at the latest available market price?')) return;
     try {
-      const result = await post(`/api/agent/trades/${encodeURIComponent(tradeId)}/quick-close`, {
-        reason: 'Quick close at market from dashboard',
-      });
-      const closed = result.closed_trade || {};
-      showResult(`Quick closed ${closed.pair || pair || ''} at ${result.close_price}. Result: ${result.result_r}R / ${result.result_money}`);
+      const result = await post(`/api/agent/trades/${encodeURIComponent(tradeId)}/quick-close`, { reason: 'Quick close from dashboard' });
+      const price = result.close_price || result.trade?.exit_price || result.trade?.close_price || '';
+      const pnl = result.result_money ?? result.trade?.result_money;
+      showResult(`Trade closed at ${price}${pnl != null ? ` | P&L ${pnl}` : ''}`);
       await refreshTradingUi();
     } catch (e) {
-      showResult(`Quick close failed: ${e.message || e}`, true);
+      showResult(`Close failed: ${e.message}`, true);
     }
   };
 
-  window.quickCloseSelectedTrade = async function quickCloseSelectedTrade() {
-    const trade = selectedQuickCloseTrade();
-    await window.quickCloseTrade(trade.id, trade.pair);
+  window.quickCloseSelectedTrade = function quickCloseSelectedTrade() {
+    window.quickCloseTrade(selectedQuickCloseTrade());
   };
 
-  function initQuickTrade() {
+  function init() {
     injectQuickTradePanel();
-    loadQuickCloseChoices();
+    scheduleQuickCloseChoices(200);
+    document.addEventListener('change', (event) => {
+      if (event.target && event.target.id === 'chartPair') scheduleQuickCloseChoices(100);
+    });
     const observer = new MutationObserver(() => {
-      injectQuickTradePanel();
-      loadQuickCloseChoices();
+      if (!qs('quickTradePanel')) injectQuickTradePanel();
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initQuickTrade);
-  } else {
-    initQuickTrade();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
