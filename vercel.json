@@ -11,6 +11,6 @@
     { "src": "/(.*)", "dest": "api/index.py" }
   ],
   "crons": [
-    { "path": "/api/agent/cron/auto-close", "schedule": "*/1 * * * 1-5" }
+    { "path": "/api/agent/cron/auto-close", "schedule": "0 9 * * 1-5" }
   ]
 }
