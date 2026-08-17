@@ -1,4 +1,4 @@
-/* agent_chart.js - Phase 1.6 live MetaTrader-style candle updates */
+/* agent_chart.js - clean live chart with all open trades as horizontal lines */
 'use strict';
 
 (function () {
@@ -7,6 +7,12 @@
   const TIMEFRAMES = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
   const TF_SECONDS = { M1: 60, M5: 300, M15: 900, H1: 3600, H4: 14400, D: 86400 };
   const ALL_TRADES_VALUE = '__all__';
+  const TRADE_PALETTES = [
+    { entry: '#facc15', sl: '#ef4444', tp: '#22c55e' },
+    { entry: '#fb923c', sl: '#f472b6', tp: '#06b6d4' },
+    { entry: '#a78bfa', sl: '#f97316', tp: '#10b981' },
+    { entry: '#fde68a', sl: '#fb7185', tp: '#2dd4bf' },
+  ];
 
   let chart = null;
   let candleSeries = null;
@@ -17,6 +23,7 @@
   let liveTickTimer = null;
   let liveCandleEnabled = true;
   let currentCandles = [];
+  let openTradeMetaById = new Map();
   let activeChartMeta = { pair: 'GBP/USD', timeframe: 'H1', provider: 'loading' };
 
   function qs(id) { return document.getElementById(id); }
@@ -53,9 +60,10 @@
       .chart-live-on { border-color:rgba(34,197,94,.5); color:#86efac; }
       .chart-live-off { border-color:rgba(239,68,68,.5); color:#fca5a5; }
       .chart-warning { color:var(--orange); font-size:12px; margin-top:8px; }
-      .chart-trade-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-top:14px; }
+      .chart-trade-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px; margin-top:14px; }
       .chart-trade-chip { border:1px solid var(--border); background:var(--bg3); border-radius:10px; padding:10px; font-size:12px; }
       .chart-trade-chip strong { display:block; margin-bottom:6px; }
+      .chart-swatch { display:inline-block; width:10px; height:10px; border-radius:999px; margin-right:6px; vertical-align:-1px; }
       @media (max-width: 760px) { .chart-frame { min-height:380px; } #agentLiveChart { height:380px; } }
     `;
     document.head.appendChild(style);
@@ -89,7 +97,7 @@
     card.id = 'agentChartPanel';
     card.innerHTML = `
       <h2>Live Trade Chart</h2>
-      <p class="card-sub">Clean paper-trading chart. By default it shows the latest open trade only, with live-money trading locked.</p>
+      <p class="card-sub">Clean paper-trading chart. Open trades are shown as horizontal entry, SL and TP lines. Live-money trading remains locked.</p>
       <div class="chart-toolbar">
         <label>Pair
           <select id="chartPair">${PAIRS.map(p => `<option value="${p}">${p}</option>`).join('')}</select>
@@ -98,7 +106,7 @@
           <select id="chartTimeframe">${TIMEFRAMES.map(tf => `<option value="${tf}" ${tf === 'H1' ? 'selected' : ''}>${tf}</option>`).join('')}</select>
         </label>
         <label>Trade overlay
-          <select id="chartTradeSelect"><option value="">No open trades on pair</option></select>
+          <select id="chartTradeSelect"><option value="${ALL_TRADES_VALUE}">All open trades on pair</option></select>
         </label>
         <button class="btn-primary" id="chartRefreshBtn" onclick="loadAgentChart()">Refresh Chart</button>
         <button class="btn-secondary" id="chartLiveBtn" onclick="toggleAgentLiveCandle()">Live Candle: On</button>
@@ -167,20 +175,20 @@
     }
     currentPriceLine = candleSeries.createPriceLine({
       price: Number(price),
-      color: '#eab308',
+      color: '#3b82f6',
       lineWidth: 2,
-      lineStyle: 2,
+      lineStyle: 0,
       axisLabelVisible: true,
       title: 'Current',
     });
   }
 
-  function addTradePriceLine(price, title, color, style) {
+  function addTradePriceLine(price, title, color, style, width = 2) {
     if (!candleSeries || !Number.isFinite(Number(price))) return;
     tradePriceLines.push(candleSeries.createPriceLine({
       price: Number(price),
       color,
-      lineWidth: 2,
+      lineWidth: width,
       lineStyle: style || 0,
       axisLabelVisible: true,
       title,
@@ -218,63 +226,105 @@
     return new Date(trade.filled_at || trade.opened_at || trade.created_at || 0).getTime() || 0;
   }
 
+  function enrichTrade(trade) {
+    const meta = openTradeMetaById.get(String(trade?.id || '')) || {};
+    return { ...meta, ...trade };
+  }
+
+  function tradeNumber(trade) {
+    const merged = enrichTrade(trade);
+    const fields = [merged.display_name, merged.friendly_name, merged.trade_name, merged.short_name, merged.friendly_id, merged.label, merged.id];
+    for (const field of fields) {
+      const match = String(field || '').match(/#\d+/);
+      if (match) return match[0];
+    }
+    const id = String(merged.id || '');
+    return id ? `#${id.slice(0, 4)}` : '#----';
+  }
+
   function tradeLabel(trade) {
-    const name = trade.display_name || trade.friendly_name || trade.trade_name || '';
-    if (name) return name;
-    const direction = String(trade.direction || '').toUpperCase();
-    const shortId = String(trade.id || '').slice(0, 8);
-    return `${direction || 'TRADE'} ${shortId}`.trim();
+    const merged = enrichTrade(trade);
+    const existing = merged.display_name || merged.friendly_name || merged.trade_name || merged.short_name || merged.label || '';
+    if (existing) return String(existing);
+    const origin = String(merged.trade_origin || merged.origin || merged.source || '').toLowerCase().includes('ai') ? 'AI' : 'Trade';
+    const pair = merged.pair || activeChartMeta.pair || '';
+    const directionRaw = String(merged.direction || '').toLowerCase();
+    const direction = directionRaw ? directionRaw.charAt(0).toUpperCase() + directionRaw.slice(1) : '';
+    return `${origin} ${pair} ${direction} ${tradeNumber(merged)}`.replace(/\s+/g, ' ').trim();
+  }
+
+  function getOverlapThreshold(pair) {
+    const p = String(pair || activeChartMeta.pair || '');
+    if (p === 'XAU/USD') return 0.8;
+    if (p.includes('JPY')) return 0.025;
+    return 0.00025;
+  }
+
+  function assignTradePalettes(lines) {
+    const usedLevels = [];
+    return (lines || []).map((rawTrade) => {
+      const trade = enrichTrade(rawTrade);
+      const pair = trade.pair || activeChartMeta.pair;
+      const threshold = getOverlapThreshold(pair);
+      const levels = [trade.entry, trade.stop_loss, trade.take_profit].map(Number).filter(Number.isFinite);
+      let paletteIndex = 0;
+      for (const level of levels) {
+        const overlap = usedLevels.find(item => item.pair === pair && Math.abs(item.level - level) <= threshold);
+        if (overlap) {
+          paletteIndex = (overlap.paletteIndex + 1) % TRADE_PALETTES.length;
+          break;
+        }
+      }
+      levels.forEach(level => usedLevels.push({ pair, level, paletteIndex }));
+      return { ...trade, paletteIndex, palette: TRADE_PALETTES[paletteIndex] || TRADE_PALETTES[0] };
+    });
   }
 
   function selectedOverlayMode() {
-    const selected = qs('chartTradeSelect')?.value || '';
-    if (!selected) return 'None';
+    const selected = qs('chartTradeSelect')?.value || ALL_TRADES_VALUE;
     if (selected === ALL_TRADES_VALUE) return 'All open trades';
     const selectedText = qs('chartTradeSelect')?.selectedOptions?.[0]?.textContent || 'Selected trade';
-    return selectedText.replace('Latest: ', 'Latest trade');
+    return selectedText;
   }
 
   function visibleTradeLines(lines) {
-    const selected = qs('chartTradeSelect')?.value || '';
-    const all = selected === ALL_TRADES_VALUE;
-    if (!selected || all) return lines || [];
-    return (lines || []).filter(t => String(t.id) === String(selected));
+    const selected = qs('chartTradeSelect')?.value || ALL_TRADES_VALUE;
+    if (selected === ALL_TRADES_VALUE) return assignTradePalettes(lines || []);
+    return assignTradePalettes((lines || []).filter(t => String(t.id) === String(selected)));
   }
 
   async function updateTradeDropdown(selectedPair) {
     const select = qs('chartTradeSelect');
-    if (!select) return '';
+    if (!select) return ALL_TRADES_VALUE;
     try {
       const data = await chartApi('/api/agent/trades/open');
-      const open = (data.open_trades || [])
+      const open = (data.open_trades || data.trades || data.items || [])
         .filter(t => t.pair === selectedPair)
         .sort((a, b) => tradeOpenedTime(b) - tradeOpenedTime(a));
-      const current = select.value;
+      openTradeMetaById = new Map(open.map(t => [String(t.id || ''), t]));
+      const current = select.value || ALL_TRADES_VALUE;
       if (!open.length) {
         select.innerHTML = '<option value="">No open trades on pair</option>';
         select.value = '';
         return '';
       }
-      const latest = open[0];
-      const latestId = String(latest.id || '');
       const specificOptions = open
-        .filter(t => String(t.id || '') !== latestId)
         .map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(tradeLabel(t))}</option>`)
         .join('');
       select.innerHTML = `
-        <option value="${escapeHtml(latestId)}">Latest: ${escapeHtml(tradeLabel(latest))}</option>
         <option value="${ALL_TRADES_VALUE}">All open trades on pair</option>
         ${specificOptions}
       `;
       if (current === ALL_TRADES_VALUE || open.some(t => String(t.id) === String(current))) {
         select.value = current;
       } else {
-        select.value = latestId;
+        select.value = ALL_TRADES_VALUE;
       }
       return select.value;
     } catch (_) {
       select.innerHTML = '<option value="">No open trades on pair</option>';
       select.value = '';
+      openTradeMetaById = new Map();
       return '';
     }
   }
@@ -308,15 +358,15 @@
     if (!el) return;
     const visible = visibleTradeLines(lines);
     if (!visible || !visible.length) {
-      el.innerHTML = '<div class="muted small">No open trade overlay for this pair.</div>';
+      el.innerHTML = '<div class="muted small">No open trade lines for this pair.</div>';
       return;
     }
     el.innerHTML = visible.map(t => `
       <div class="chart-trade-chip">
-        <strong>${escapeHtml(t.pair)} ${escapeHtml(String(t.direction || '').toUpperCase())}</strong>
+        <strong><span class="chart-swatch" style="background:${t.palette.entry}"></span>${escapeHtml(tradeLabel(t))}</strong>
         Entry: ${t.entry ?? '?'}<br>
-        Stop: ${t.stop_loss ?? '?'}<br>
-        Target: ${t.take_profit ?? '?'}<br>
+        SL: ${t.stop_loss ?? '?'}<br>
+        TP: ${t.take_profit ?? '?'}<br>
         <span class="muted">${escapeHtml(t.setup_label || '')}</span>
       </div>
     `).join('');
@@ -327,37 +377,16 @@
     const quote = data.current_price || {};
     if (quote.price) setCurrentPriceLine(Number(quote.price));
     visibleTradeLines(data.trade_lines || []).forEach(t => {
-      const direction = String(t.direction || '').toUpperCase();
-      addTradePriceLine(Number(t.entry), `${direction} Entry`, '#60a5fa', 0);
-      addTradePriceLine(Number(t.stop_loss), 'Stop Loss', '#ef4444', 1);
-      addTradePriceLine(Number(t.take_profit), 'Take Profit', '#22c55e', 1);
+      const number = tradeNumber(t);
+      addTradePriceLine(Number(t.entry), tradeLabel(t), t.palette.entry, 0, 2);
+      addTradePriceLine(Number(t.stop_loss), `${number} SL`, t.palette.sl, 2, 2);
+      addTradePriceLine(Number(t.take_profit), `${number} TP`, t.palette.tp, 2, 2);
     });
   }
 
-  function applyMarkers(data) {
+  function applyMarkers() {
     if (!candleSeries) return;
-    const selected = qs('chartTradeSelect')?.value || '';
-    const visibleIds = new Set(visibleTradeLines(data.trade_lines || []).map(t => String(t.id)));
-    const showAll = selected === ALL_TRADES_VALUE;
-    const sourceMarkers = (data.trade_markers || []).filter(m => {
-      const tradeId = String(m.trade_id || '');
-      if (selected && !showAll) return tradeId === String(selected);
-      if (showAll) return visibleIds.has(tradeId) && m.type === 'entry';
-      return false;
-    }).slice(-8);
-
-    const markers = sourceMarkers.map(m => {
-      const isExit = m.type === 'exit';
-      const isBuy = String(m.direction || '').toLowerCase() === 'buy';
-      return {
-        time: convertTime(m.time),
-        position: isExit ? 'aboveBar' : (isBuy ? 'belowBar' : 'aboveBar'),
-        color: isExit ? '#f59e0b' : (isBuy ? '#22c55e' : '#ef4444'),
-        shape: isExit ? 'circle' : (isBuy ? 'arrowUp' : 'arrowDown'),
-        text: isExit ? 'Exit' : 'Entry',
-      };
-    }).filter(m => Number.isFinite(m.time));
-    candleSeries.setMarkers(markers);
+    candleSeries.setMarkers([]);
   }
 
   function updateCurrentCandleFromTick(tick) {
