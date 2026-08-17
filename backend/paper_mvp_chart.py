@@ -207,3 +207,38 @@ async def agent_chart_candles(
         "live_trading_locked": True,
         "paper_trading": True,
     }
+
+
+@app.get("/api/agent/chart/tick")
+async def agent_chart_tick(
+    pair: str = Query("GBP/USD"),
+    user: str = Depends(base.current_user),
+):
+    chart_pair = _pair(pair)
+    quote = _current_quote(chart_pair)
+    if not quote:
+        price = base.rprice(chart_pair, base.base_price(chart_pair))
+        pip = base.pip_size(chart_pair)
+        quote = {
+            "pair": chart_pair,
+            "price": price,
+            "bid": base.rprice(chart_pair, price - pip),
+            "ask": base.rprice(chart_pair, price + pip),
+            "spread_pips": 2,
+            "timestamp": base.now(),
+            "source": "synthetic-fallback",
+        }
+    return {
+        "pair": chart_pair,
+        "price": quote.get("price"),
+        "bid": quote.get("bid"),
+        "ask": quote.get("ask"),
+        "spread_pips": quote.get("spread_pips"),
+        "timestamp": quote.get("timestamp") or base.now(),
+        "generated_at": base.now(),
+        "provider": quote.get("source") or "snapshot",
+        "trade_lines": _trade_lines(user, chart_pair),
+        "live_trading_locked": True,
+        "paper_trading": True,
+        "suggested_poll_seconds": 5,
+    }
