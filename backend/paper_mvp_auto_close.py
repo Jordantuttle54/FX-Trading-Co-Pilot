@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import os
+from typing import Any, Dict, List, Optional, Set
 
-from fastapi import Depends, Query
+from fastapi import Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from . import paper_mvp_trade_names as names
@@ -143,11 +144,68 @@ def auto_close_open_trades(user: str, pair: Optional[str] = None) -> List[Dict[s
     return actions
 
 
+def _configured_cron_users() -> Set[str]:
+    users: Set[str] = set()
+    for value in os.getenv("PAPER_CRON_USERS", "").split(","):
+        user = value.strip()
+        if user:
+            users.add(user)
+    return users
+
+
+def _open_trade_users() -> List[str]:
+    users: Set[str] = _configured_cron_users()
+
+    if compat.compat_storage_mode() == "postgres":
+        try:
+            with base.db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT DISTINCT user_name FROM {compat.PAPER_TABLE} WHERE status=%s", ("open",))
+                    for row in cur.fetchall() or []:
+                        if row and row[0]:
+                            users.add(str(row[0]))
+        except Exception:
+            pass
+    else:
+        try:
+            for trade in getattr(base, "TRADES", []):
+                if str(trade.get("status", "")).lower() == "open":
+                    user_name = trade.get("user_name") or trade.get("user") or trade.get("username")
+                    if user_name:
+                        users.add(str(user_name))
+        except Exception:
+            pass
+
+    if not users:
+        try:
+            auth_users = getattr(base, "USERS", {}) or {}
+            users.update(str(u) for u in auth_users.keys() if u)
+        except Exception:
+            pass
+
+    return sorted(users)
+
+
+def _verify_cron_request(request: Request) -> Dict[str, Any]:
+    secret = os.getenv("CRON_SECRET", "").strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail="CRON_SECRET is not configured on this Vercel project.")
+    auth_header = (request.headers.get("authorization") or "").strip()
+    if auth_header != f"Bearer {secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized cron request")
+    return {
+        "authorized": True,
+        "user_agent": request.headers.get("user-agent", ""),
+        "vercel_cron": "vercel-cron" in (request.headers.get("user-agent", "").lower()),
+    }
+
+
 for path, methods in [
     ("/api/agent/chart/tick", {"GET"}),
     ("/api/agent/chart/candles", {"GET"}),
     ("/api/agent/trades/auto-close-check", {"GET", "POST"}),
     ("/api/agent/trades/{trade_id}", {"GET"}),
+    ("/api/agent/cron/auto-close", {"GET"}),
 ]:
     compat._remove_routes(path, methods)
 
@@ -203,6 +261,38 @@ async def auto_close_check_get(
 @app.post("/api/agent/trades/auto-close-check")
 async def auto_close_check_post(req: AutoCloseRequest, user: str = Depends(base.current_user)):
     return await auto_close_check_get(req.pair, user)
+
+
+@app.get("/api/agent/cron/auto-close")
+async def cron_auto_close_all_open_trades(request: Request):
+    auth = _verify_cron_request(request)
+    users = _open_trade_users()
+    actions: List[Dict[str, Any]] = []
+    errors: List[Dict[str, str]] = []
+
+    for user in users:
+        try:
+            user_actions = auto_close_open_trades(user)
+            for action in user_actions:
+                action["user"] = user
+            actions.extend(user_actions)
+        except Exception as exc:
+            errors.append({"user": user, "error": str(exc)})
+
+    return {
+        "ok": len(errors) == 0,
+        "cron": True,
+        "auth": auth,
+        "checked_users": users,
+        "users_checked_count": len(users),
+        "closed_count": len(actions),
+        "actions": actions,
+        "errors": errors,
+        "storage_mode": compat.compat_storage_mode(),
+        "paper_auto_close_enabled": True,
+        "live_trading_locked": True,
+        "generated_at": base.now(),
+    }
 
 
 @app.get("/api/agent/trades/{trade_id}")
