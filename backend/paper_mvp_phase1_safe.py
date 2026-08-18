@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from fastapi import Depends, HTTPException
 
+from . import execution
 from . import paper_mvp_phase1_controls as phase1
 
 app = phase1.app
@@ -60,6 +61,20 @@ async def agent_manual_close_trade_phase1_safe(
         raise HTTPException(status_code=409, detail="Trade is not open")
 
     close_price = _as_float(req.close_price, _as_float(trade.get("entry_price", trade.get("entry"))))
+    broker_close: Any = None
+
+    if trade.get("broker_mode") == execution.MODE_DEMO:
+        instrument = str(trade.get("pair") or "").strip().upper().replace("/", "_")
+        broker_close = execution.close_position_oanda(instrument)
+        if broker_close.get("status") == "closed" and req.close_price is None:
+            raw = broker_close.get("raw") or {}
+            fill = raw.get("longOrderFillTransaction") or raw.get("shortOrderFillTransaction") or {}
+            if fill.get("price"):
+                close_price = _as_float(fill.get("price"), close_price)
+        # A broker-side error here usually just means OANDA's own stop-loss/take-profit
+        # order already closed this position before the manual click landed - the app
+        # still records the close locally using the best price it has.
+
     result_r = _calc_result_r(trade, close_price)
     result_money = _calc_result_money(trade, result_r)
 
@@ -71,6 +86,8 @@ async def agent_manual_close_trade_phase1_safe(
     trade["result_r"] = result_r
     trade["result_money"] = result_money
     trade["quality_tag"] = "manual_close"
+    if broker_close is not None:
+        trade["broker_close"] = broker_close
 
     compat.compat_update_trade(trade)
     try:

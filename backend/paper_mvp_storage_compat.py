@@ -256,14 +256,14 @@ def compat_save_trade(user: str, candidate: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": base.now(),
         "updated_at": base.now(),
         "status": "open",
-        "broker_mode": "paper",
-        "order_id": f"PAPER-{trade_id[:8]}",
+        "broker_mode": payload.get("broker_mode", "paper"),
+        "order_id": payload.get("order_id") or f"PAPER-{trade_id[:8]}",
     }
     item["entry_price"] = item.get("entry_price", item.get("entry"))
     item["entry"] = item["entry_price"]
     item["take_profit"] = item.get("take_profit", item.get("target"))
     item["target"] = item["take_profit"]
-    item["filled_at"] = item["created_at"]
+    item["filled_at"] = payload.get("filled_at") or item["created_at"]
     compat_upsert_trade(item)
     return item
 

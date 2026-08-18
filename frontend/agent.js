@@ -50,6 +50,7 @@ async function loadDashboard() {
     loadStatus();
     loadAuditLog();
     loadUpcomingNews();
+    loadWalletPanel();
 }
 
 async function loadStatus() {
@@ -692,6 +693,95 @@ async function loadSettings() {
           updateKillSwitchUI(ks.active);
     } catch (e) {
           console.error('Settings load error:', e);
+    }
+    loadWalletPanel();
+}
+
+// ---------------------------------------------------------------------------
+// Wallet
+// ---------------------------------------------------------------------------
+function formatWalletMoney(value) {
+    const n = Number(value || 0);
+    const sign = n < 0 ? '-' : '';
+    return `${sign}£${Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function renderWalletSummary(wallet) {
+    window.walletBalance = wallet.balance;
+    window.walletCashBalance = wallet.cash_balance;
+    // Keep the manual balance inputs in sync so scan/quick-trade sizing risks
+    // against the real wallet balance instead of a stale, disconnected value.
+    const scanBalanceInput = document.getElementById('scanBalance');
+    if (scanBalanceInput) scanBalanceInput.value = wallet.balance;
+    const quickTradeBalanceInput = document.getElementById('quickTradeBalance');
+    if (quickTradeBalanceInput) quickTradeBalanceInput.value = wallet.balance;
+    const el = document.getElementById('walletSummaryPanel');
+    if (!el) return;
+    const pnlColor = wallet.realised_pnl > 0 ? 'var(--green)' : wallet.realised_pnl < 0 ? 'var(--red)' : 'inherit';
+    el.innerHTML = `
+        <div class="wallet-summary-grid">
+          <div class="wallet-summary-cell"><span class="muted small">Balance</span><strong>${formatWalletMoney(wallet.balance)}</strong></div>
+          <div class="wallet-summary-cell"><span class="muted small">Cash (deposits - withdrawals)</span><strong>${formatWalletMoney(wallet.cash_balance)}</strong></div>
+          <div class="wallet-summary-cell"><span class="muted small">Realised P&amp;L</span><strong style="color:${pnlColor}">${formatWalletMoney(wallet.realised_pnl)}</strong></div>
+          <div class="wallet-summary-cell"><span class="muted small">Total deposited</span><strong>${formatWalletMoney(wallet.total_deposits)}</strong></div>
+          <div class="wallet-summary-cell"><span class="muted small">Total withdrawn</span><strong>${formatWalletMoney(wallet.total_withdrawals)}</strong></div>
+        </div>`;
+    const tx = document.getElementById('walletTransactionsPanel');
+    if (tx) {
+          tx.innerHTML = wallet.transactions.length ? `
+              <div class="muted small" style="margin-bottom:6px">Recent wallet activity</div>
+              ${wallet.transactions.slice(0, 10).map(t => `
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+                  <span>${t.type === 'deposit' ? 'Deposit' : 'Withdrawal'}${t.note ? ` &mdash; ${t.note}` : ''}</span>
+                  <strong style="color:${t.type === 'deposit' ? 'var(--green)' : 'var(--red)'}">${t.type === 'deposit' ? '+' : '-'}${formatWalletMoney(t.amount)}</strong>
+                </div>`).join('')}
+              ` : '<span class="muted small">No deposits or withdrawals yet.</span>';
+    }
+}
+
+async function loadWalletPanel() {
+    try {
+          const wallet = await api('/api/agent/wallet');
+          renderWalletSummary(wallet);
+    } catch (e) {
+          const el = document.getElementById('walletSummaryPanel');
+          if (el) el.innerHTML = `<span class="muted small">Wallet error: ${e.message}</span>`;
+    }
+}
+
+async function depositWallet() {
+    const input = document.getElementById('walletDepositAmount');
+    const resultEl = document.getElementById('walletActionResult');
+    const amount = parseFloat(input?.value);
+    if (!amount || amount <= 0) {
+          if (resultEl) resultEl.innerHTML = '<span style="color:var(--red)">Enter a deposit amount greater than zero.</span>';
+          return;
+    }
+    try {
+          const wallet = await post('/api/agent/wallet/deposit', { amount });
+          renderWalletSummary(wallet);
+          if (input) input.value = '';
+          if (resultEl) resultEl.innerHTML = `<span style="color:var(--green)">Deposited ${formatWalletMoney(amount)}. New balance: ${formatWalletMoney(wallet.balance)}.</span>`;
+    } catch (e) {
+          if (resultEl) resultEl.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
+    }
+}
+
+async function withdrawWallet() {
+    const input = document.getElementById('walletWithdrawAmount');
+    const resultEl = document.getElementById('walletActionResult');
+    const amount = parseFloat(input?.value);
+    if (!amount || amount <= 0) {
+          if (resultEl) resultEl.innerHTML = '<span style="color:var(--red)">Enter a withdrawal amount greater than zero.</span>';
+          return;
+    }
+    try {
+          const wallet = await post('/api/agent/wallet/withdraw', { amount });
+          renderWalletSummary(wallet);
+          if (input) input.value = '';
+          if (resultEl) resultEl.innerHTML = `<span style="color:var(--green)">Withdrew ${formatWalletMoney(amount)}. New balance: ${formatWalletMoney(wallet.balance)}.</span>`;
+    } catch (e) {
+          if (resultEl) resultEl.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
     }
 }
 

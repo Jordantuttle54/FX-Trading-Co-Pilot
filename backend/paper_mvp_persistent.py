@@ -4,7 +4,9 @@ import json
 import math
 import os
 import random
+import threading
 import uuid
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,6 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+from . import execution
 
 from .auth import current_user, make_session
 
@@ -140,6 +144,22 @@ def oanda_configured() -> bool:
     return bool(os.getenv("OANDA_ACCESS_TOKEN") and os.getenv("OANDA_ACCOUNT_ID"))
 
 
+def execution_engine_mode() -> str:
+    """Diagnostic: which mode execution.place_demo_trade() will actually use.
+
+    Reported separately from oanda_configured() above because execution.py
+    reads credentials via backend.config.settings, a different config
+    object than the os.getenv() calls used elsewhere in this module - if
+    the two ever disagree, that's a real bug worth surfacing.
+    """
+    if execution.settings.enable_live_trading:
+        return "locked"
+    try:
+        return execution._active_mode()
+    except Exception:
+        return "unknown"
+
+
 def oanda_base() -> str:
     return OANDA_LIVE if os.getenv("OANDA_ENV", "practice").lower() == "live" else OANDA_PRACTICE
 
@@ -150,8 +170,39 @@ def db_url() -> str:
     return DATABASE_URL
 
 
+_pooled_conn: Optional[Any] = None
+_pool_lock = threading.Lock()
+
+
 def db_conn():
-    return psycopg2.connect(db_url())
+    """Returns one shared, health-checked connection per warm process.
+
+    Every read/write used to call psycopg2.connect() fresh, opening a new
+    TCP+TLS connection to Neon on every call (several per request) and never
+    closing it afterwards (psycopg2's `with conn:` only commits/rolls back a
+    transaction, it doesn't close the socket) — a fast way to burn through a
+    data-transfer quota. Callers already use `with base.db_conn() as conn:`,
+    which is exactly the pattern psycopg2 supports for reusing one connection
+    across many transactions, so no call sites need to change.
+    """
+    global _pooled_conn
+    with _pool_lock:
+        if _pooled_conn is not None:
+            try:
+                if _pooled_conn.closed:
+                    _pooled_conn = None
+                else:
+                    with _pooled_conn.cursor() as cur:
+                        cur.execute("SELECT 1")
+            except Exception:
+                try:
+                    _pooled_conn.close()
+                except Exception:
+                    pass
+                _pooled_conn = None
+        if _pooled_conn is None:
+            _pooled_conn = psycopg2.connect(db_url())
+        return _pooled_conn
 
 
 def ensure_db() -> bool:
@@ -299,9 +350,22 @@ def update_trade(item: Dict[str, Any]) -> None:
                 break
 
 
+def _stable_seed(text: str) -> int:
+    """Deterministic string hash for random.seed().
+
+    Python's built-in hash() is randomized per process (PYTHONHASHSEED), so
+    seeding with hash(pair) produced a different synthetic "current price"
+    every time a new serverless process picked up a request. A trade opened
+    in one process and checked against a fresh process moments later could
+    see a completely unrelated price and register a spurious stop-loss or
+    take-profit hit that had nothing to do with real market movement.
+    """
+    return zlib.crc32(text.encode("utf-8"))
+
+
 def base_price(pair: str) -> float:
     bases = {"GBP/USD": 1.2700, "EUR/USD": 1.0850, "USD/JPY": 156.20, "EUR/GBP": 0.8550, "GBP/JPY": 198.50, "XAU/USD": 2350.0}
-    random.seed(abs(hash(pair)) % 100000 + int(datetime.utcnow().strftime("%Y%m%d%H")))
+    random.seed(_stable_seed(pair) % 100000 + int(datetime.utcnow().strftime("%Y%m%d%H")))
     return bases.get(pair, 1.0) * (1 + random.uniform(-0.002, 0.002))
 
 
@@ -353,7 +417,7 @@ def synthetic_candles(pair: str) -> List[Dict[str, Any]]:
     pip = pip_size(pair)
     vol = 12 * pip if pair != "XAU/USD" else 2.0
     out = []
-    random.seed(abs(hash(pair + "candles")) % 100000 + int(datetime.utcnow().strftime("%Y%m%d")))
+    random.seed(_stable_seed(pair + "candles") % 100000 + int(datetime.utcnow().strftime("%Y%m%d")))
     for i in range(120):
         drift = math.sin(i / 12) * vol * 0.35
         op = price
@@ -546,7 +610,7 @@ async def health():
 
 @app.get("/api/config")
 async def config():
-    return {"watchlist": WATCHLIST, "selected_provider": "oanda" if oanda_configured() else "synthetic-fallback", "account_currency": "GBP", "paper_trading": {"starting_balance": START_BALANCE, "enforce_london_window": ENFORCE_WINDOW, "live_trading_locked": True, "storage_mode": storage_mode()}, "rules": {"max_risk_per_trade_pct": MAX_RISK, "max_daily_loss_pct": DAILY_LIMIT, "max_weekly_loss_pct": WEEKLY_LIMIT, "min_risk_reward": MIN_RR, "live_trading_locked": True, "min_confidence_score": MIN_CONF}, "configured": {"oanda": oanda_configured(), "auth_passcode": bool(os.getenv("AUTH_PASSCODE")), "auth_token_secret": bool(os.getenv("AUTH_TOKEN_SECRET")), "database": storage_mode() == "postgres"}}
+    return {"watchlist": WATCHLIST, "selected_provider": "oanda" if oanda_configured() else "synthetic-fallback", "account_currency": "GBP", "paper_trading": {"starting_balance": START_BALANCE, "enforce_london_window": ENFORCE_WINDOW, "live_trading_locked": True, "storage_mode": storage_mode()}, "rules": {"max_risk_per_trade_pct": MAX_RISK, "max_daily_loss_pct": DAILY_LIMIT, "max_weekly_loss_pct": WEEKLY_LIMIT, "min_risk_reward": MIN_RR, "live_trading_locked": True, "min_confidence_score": MIN_CONF}, "configured": {"oanda": oanda_configured(), "oanda_execution_engine": bool(execution.settings.oanda_access_token and execution.settings.oanda_account_id), "execution_mode": execution_engine_mode(), "auth_passcode": bool(os.getenv("AUTH_PASSCODE")), "auth_token_secret": bool(os.getenv("AUTH_TOKEN_SECRET")), "database": storage_mode() == "postgres"}}
 
 @app.get("/api/status")
 async def legacy_status():
