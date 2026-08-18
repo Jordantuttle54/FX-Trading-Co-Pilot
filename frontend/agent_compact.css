@@ -394,3 +394,18 @@ textarea {
     height: 330px !important;
   }
 }
+
+/* Fine tune the Trades cockpit right rail: lift wallet and quick ticket slightly without touching the chart. */
+@media (min-width: 1281px) {
+  #tab-trades #agentChartPanel #chartAccountPanel,
+  #tab-trades #agentChartPanel #quickTradePanel {
+    transform: translateY(-20px);
+  }
+}
+
+@media (max-width: 1280px) {
+  #tab-trades #agentChartPanel #chartAccountPanel,
+  #tab-trades #agentChartPanel #quickTradePanel {
+    transform: none;
+  }
+}
