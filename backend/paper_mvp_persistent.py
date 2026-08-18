@@ -4,6 +4,7 @@ import json
 import math
 import os
 import random
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -150,8 +151,39 @@ def db_url() -> str:
     return DATABASE_URL
 
 
+_pooled_conn: Optional[Any] = None
+_pool_lock = threading.Lock()
+
+
 def db_conn():
-    return psycopg2.connect(db_url())
+    """Returns one shared, health-checked connection per warm process.
+
+    Every read/write used to call psycopg2.connect() fresh, opening a new
+    TCP+TLS connection to Neon on every call (several per request) and never
+    closing it afterwards (psycopg2's `with conn:` only commits/rolls back a
+    transaction, it doesn't close the socket) — a fast way to burn through a
+    data-transfer quota. Callers already use `with base.db_conn() as conn:`,
+    which is exactly the pattern psycopg2 supports for reusing one connection
+    across many transactions, so no call sites need to change.
+    """
+    global _pooled_conn
+    with _pool_lock:
+        if _pooled_conn is not None:
+            try:
+                if _pooled_conn.closed:
+                    _pooled_conn = None
+                else:
+                    with _pooled_conn.cursor() as cur:
+                        cur.execute("SELECT 1")
+            except Exception:
+                try:
+                    _pooled_conn.close()
+                except Exception:
+                    pass
+                _pooled_conn = None
+        if _pooled_conn is None:
+            _pooled_conn = psycopg2.connect(db_url())
+        return _pooled_conn
 
 
 def ensure_db() -> bool:
