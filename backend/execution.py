@@ -103,7 +103,11 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
 
         # OANDA instrument format: GBP_USD not GBP/USD
         instrument = candidate["pair"].replace("/", "_")
-        units = candidate["position_units"] * 10000  # convert lots to units (approx)
+        # position_units from score_candidate() is already raw currency units
+        # (risk_amount / stop_distance), not lots - this used to multiply by
+        # 10000 on top of that, turning a reasonable ~25,000-unit position
+        # into a ~250,000,000-unit order that OANDA rejects outright.
+        units = candidate["position_units"]
         if candidate["direction"] == "sell":
             units = -abs(units)
 
@@ -150,8 +154,17 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{OANDA_PRACTICE_URL}/v3/accounts/{settings.oanda_account_id}/orders"
         with httpx.Client(timeout=12) as client:
             resp = client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            if resp.status_code >= 400:
+                # A 4xx means OANDA rejected the request itself (bad units,
+                # bad price format, etc.) - raise_for_status() alone would
+                # only surface the generic "400 Bad Request" status line, not
+                # OANDA's actual error message in the response body.
+                detail = data.get("errorMessage") or data.get("rejectReason") or resp.text
+                raise RuntimeError(f"OANDA rejected the order ({resp.status_code}): {detail}")
 
         fill = data.get("orderFillTransaction", {})
         if not fill:
