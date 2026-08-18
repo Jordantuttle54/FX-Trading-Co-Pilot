@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from . import execution
 from . import paper_mvp_storage_compat as compat
 
 app = compat.app
@@ -135,13 +136,41 @@ async def agent_execute_phase1(req: AgentExecutePhase1Request, user: str = Depen
             },
         )
 
+    execution_result = execution.place_demo_trade(candidate)
+    if execution_result.get("status") != "filled":
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"{execution_result.get('mode', 'broker')} order was not filled.",
+                "error": execution_result.get("error"),
+                "candidate": candidate,
+            },
+        )
+
+    candidate = {
+        **candidate,
+        "entry": execution_result["entry"],
+        "entry_price": execution_result["entry"],
+        "broker_mode": execution_result["mode"],
+        "order_id": execution_result["order_id"],
+        "filled_at": execution_result["filled_at"],
+        "spread_cost": execution_result.get("spread_cost"),
+        "slippage": execution_result.get("slippage"),
+        "broker_raw": execution_result.get("broker_raw"),
+    }
+
     trade = compat.compat_save_trade(user, candidate)
     try:
+        audit_note = (
+            "Paper trade opened. No real order was sent."
+            if execution_result["mode"] == execution.MODE_PAPER
+            else f"OANDA demo order opened at {execution_result['entry']}. Practice account only, no real money involved."
+        )
         compat.compat_add_audit(
             user,
             "paper_execute",
             "opened",
-            "Paper trade opened. No real order was sent.",
+            audit_note,
             req.pair,
             str(trade["id"]),
         )
@@ -150,7 +179,7 @@ async def agent_execute_phase1(req: AgentExecutePhase1Request, user: str = Depen
 
     return {
         "trade_id": trade["id"],
-        "execution": {"mode": "paper", "status": "filled", "order_id": trade.get("order_id"), "live_money": False},
+        "execution": {**execution_result, "live_money": False},
         "candidate": candidate,
         "trade": trade,
         "duplicate_warning": bool(duplicate),
@@ -196,6 +225,20 @@ async def agent_manual_close_trade_phase1(trade_id: str, req: ManualCloseRequest
         raise HTTPException(status_code=409, detail="Trade is not open")
 
     close_price = _as_float(req.close_price, _as_float(trade.get("entry_price", trade.get("entry"))))
+    broker_close: Optional[Dict[str, Any]] = None
+
+    if trade.get("broker_mode") == execution.MODE_DEMO:
+        instrument = _pair(trade.get("pair")).replace("/", "_")
+        broker_close = execution.close_position_oanda(instrument)
+        if broker_close.get("status") == "closed" and req.close_price is None:
+            raw = broker_close.get("raw") or {}
+            fill = raw.get("longOrderFillTransaction") or raw.get("shortOrderFillTransaction") or {}
+            if fill.get("price"):
+                close_price = _as_float(fill.get("price"), close_price)
+        # A broker-side error here usually just means OANDA's own stop-loss/take-profit
+        # order already closed this position before the manual click landed - the app
+        # still records the close locally using the best price it has.
+
     result_r = _calc_result_r(trade, close_price)
     result_money = _calc_result_money(trade, result_r)
 
@@ -207,6 +250,8 @@ async def agent_manual_close_trade_phase1(trade_id: str, req: ManualCloseRequest
     trade["result_r"] = result_r
     trade["result_money"] = result_money
     trade["quality_tag"] = "manual_close"
+    if broker_close is not None:
+        trade["broker_close"] = broker_close
 
     compat.compat_update_trade(trade)
     try:
