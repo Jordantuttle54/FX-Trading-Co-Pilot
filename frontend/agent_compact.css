@@ -1,0 +1,396 @@
+/* agent_compact.css - Phase 1 correction: reduce bulk and remove duplicate trade panel */
+
+:root {
+  --compact-card-pad: 16px;
+  --compact-gap: 16px;
+}
+
+.agent-header {
+  padding: 8px clamp(18px, 3vw, 44px) !important;
+}
+
+.agent-header-inner {
+  min-height: 46px;
+  grid-template-columns: minmax(220px, 330px) minmax(300px, 1fr) auto !important;
+  gap: 16px !important;
+}
+
+.agent-logo {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 10px !important;
+  font-size: 12px;
+}
+
+.agent-brand h1 {
+  font-size: 14px !important;
+}
+
+.agent-tagline {
+  font-size: 10px !important;
+  margin-top: 1px !important;
+}
+
+.agent-status-strip {
+  gap: 7px !important;
+  font-size: 11px !important;
+}
+
+.badge-safe,
+.badge-danger,
+.badge-neutral,
+.badge-warn,
+.chart-pill {
+  min-height: 24px !important;
+  padding: 4px 9px !important;
+  font-size: 11px !important;
+}
+
+.agent-actions {
+  gap: 8px !important;
+}
+
+.agent-actions button,
+.agent-header button {
+  min-height: 34px !important;
+  padding: 8px 14px !important;
+  font-size: 12px !important;
+}
+
+.agent-nav {
+  top: 51px !important;
+  padding: 7px clamp(18px, 3vw, 44px) !important;
+}
+
+.agent-tab {
+  padding: 7px 13px !important;
+  font-size: 12px !important;
+}
+
+main.agent-main,
+.agent-main {
+  padding-top: 18px !important;
+  padding-bottom: 44px !important;
+  width: min(1460px, calc(100vw - 64px)) !important;
+}
+
+.agent-card {
+  padding: var(--compact-card-pad) !important;
+  margin-bottom: var(--compact-gap) !important;
+  border-radius: 15px !important;
+}
+
+.agent-card h2 {
+  font-size: 15px !important;
+  margin-bottom: 9px !important;
+}
+
+.card-sub {
+  margin-top: 5px !important;
+  font-size: 11px !important;
+}
+
+.agent-grid-2,
+.agent-grid-3,
+.candidates-grid,
+.perf-grid,
+.pair-risk-map,
+.wallet-summary-grid,
+.chart-workspace {
+  gap: var(--compact-gap) !important;
+}
+
+button,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-safe,
+.btn-buy,
+.btn-sell,
+.btn-quick-close,
+input,
+select,
+textarea {
+  min-height: 34px !important;
+  font-size: 12px !important;
+}
+
+button,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-safe,
+.btn-buy,
+.btn-sell,
+.btn-quick-close {
+  padding: 8px 13px !important;
+  border-radius: 10px !important;
+}
+
+input,
+select,
+textarea {
+  padding: 7px 10px !important;
+}
+
+/* The chart already has a trade summary and quick-close controls, so this removes the duplicate top trade card. */
+#tab-trades > .agent-card:first-child {
+  display: none !important;
+}
+
+#tab-trades .chart-shell {
+  margin-top: 0 !important;
+  padding: 16px !important;
+}
+
+.chart-head-row {
+  align-items: center !important;
+  margin-bottom: 8px !important;
+}
+
+.chart-head-row h2 {
+  margin-bottom: 4px !important;
+}
+
+.chart-head-row .card-sub {
+  max-width: 720px;
+}
+
+.chart-toolbar {
+  margin: 8px 0 10px !important;
+  gap: 9px !important;
+  align-items: end !important;
+}
+
+.chart-toolbar label {
+  font-size: 10px !important;
+  gap: 3px !important;
+}
+
+.chart-toolbar select {
+  min-width: 100px !important;
+}
+
+.quick-trade-panel {
+  margin: 8px 0 12px !important;
+  padding: 12px !important;
+  border-radius: 14px !important;
+}
+
+.quick-trade-panel h3 {
+  font-size: 14px !important;
+  margin-bottom: 8px !important;
+}
+
+.quick-trade-row {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) 88px 130px 130px auto auto auto minmax(170px, 230px) auto;
+  gap: 8px !important;
+  align-items: end !important;
+}
+
+.quick-trade-row label {
+  font-size: 10px !important;
+  gap: 3px !important;
+}
+
+.quick-close-select {
+  min-width: 170px !important;
+}
+
+.quick-trade-warning {
+  margin-top: 7px !important;
+  font-size: 10px !important;
+  line-height: 1.35 !important;
+}
+
+.chart-workspace {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 330px) !important;
+  align-items: stretch !important;
+}
+
+.chart-frame {
+  min-height: 420px !important;
+}
+
+#agentLiveChart {
+  height: 420px !important;
+}
+
+.chart-account-panel {
+  min-height: 420px !important;
+  padding: 12px !important;
+}
+
+.chart-account-top {
+  margin-bottom: 8px !important;
+}
+
+.chart-account-title {
+  font-size: 14px !important;
+}
+
+.chart-account-sub {
+  font-size: 10px !important;
+}
+
+.chart-money-grid {
+  gap: 8px !important;
+  margin: 8px 0 !important;
+}
+
+.chart-money-cell {
+  padding: 9px !important;
+  border-radius: 10px !important;
+}
+
+.chart-money-label {
+  font-size: 10px !important;
+}
+
+.chart-money-value {
+  font-size: 15px !important;
+}
+
+.chart-position-list {
+  max-height: 170px !important;
+  margin-top: 9px !important;
+  padding-top: 8px !important;
+}
+
+.chart-position-row {
+  padding: 7px 0 !important;
+}
+
+.chart-account-note {
+  font-size: 10px !important;
+  margin-top: 8px !important;
+}
+
+.chart-status-row {
+  gap: 7px !important;
+  margin-top: 8px !important;
+}
+
+.chart-pill {
+  padding: 4px 8px !important;
+  font-size: 10px !important;
+}
+
+.chart-trade-list {
+  margin-top: 10px !important;
+  gap: 8px !important;
+}
+
+.chart-trade-chip {
+  padding: 10px !important;
+  font-size: 11px !important;
+  border-radius: 11px !important;
+}
+
+.audit-log th,
+.audit-log td,
+.trade-table th,
+.trade-table td,
+.trade-journal th,
+.trade-journal td {
+  padding: 9px 11px !important;
+  font-size: 11px !important;
+}
+
+.open-trade-card,
+.rejected-row,
+.nosetup-row,
+.risk-cell,
+.perf-cell,
+.proposal-card {
+  padding: 12px !important;
+}
+
+.card-big-value {
+  font-size: clamp(26px, 2.1vw, 36px) !important;
+}
+
+.london-clock {
+  min-height: 145px !important;
+}
+
+.clock-display {
+  font-size: clamp(34px, 4vw, 52px) !important;
+}
+
+@media (max-height: 860px) and (min-width: 1000px) {
+  .agent-header {
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+  }
+
+  .agent-nav {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
+  main.agent-main,
+  .agent-main {
+    padding-top: 14px !important;
+  }
+
+  .agent-card {
+    padding: 14px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .chart-head-row .card-sub {
+    display: none !important;
+  }
+
+  .quick-trade-warning {
+    display: none !important;
+  }
+
+  .chart-frame {
+    min-height: 360px !important;
+  }
+
+  #agentLiveChart {
+    height: 360px !important;
+  }
+
+  .chart-account-panel {
+    min-height: 360px !important;
+  }
+}
+
+@media (max-width: 1280px) {
+  .quick-trade-row {
+    grid-template-columns: repeat(4, minmax(100px, 1fr));
+  }
+
+  .chart-workspace {
+    grid-template-columns: 1fr !important;
+  }
+
+  .chart-account-panel {
+    min-height: auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  main.agent-main,
+  .agent-main {
+    width: min(100vw - 24px, 1460px) !important;
+  }
+
+  .agent-card,
+  #tab-trades .chart-shell {
+    padding: 13px !important;
+  }
+
+  .chart-frame {
+    min-height: 330px !important;
+  }
+
+  #agentLiveChart {
+    height: 330px !important;
+  }
+}
