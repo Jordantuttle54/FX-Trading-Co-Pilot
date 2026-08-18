@@ -1,0 +1,476 @@
+/* agent_polish.css - Phase 1 global visual polish foundation
+   Design-only overrides for the AI FX Trading Agent. */
+
+:root {
+  --bg: #070c13;
+  --panel: #141c27;
+  --panel-2: #1b2634;
+  --panel-3: #233144;
+  --border: rgba(148, 163, 184, 0.22);
+  --border-strong: rgba(148, 163, 184, 0.36);
+  --text: #f4f8ff;
+  --muted: #9fb0c7;
+  --muted-2: #718197;
+  --accent: #58a6ff;
+  --accent-2: #7cc4ff;
+  --green: #38d66b;
+  --red: #ff5c57;
+  --orange: #ffb020;
+  --gold: #f0c94a;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.22);
+  --focus-ring: 0 0 0 3px rgba(88, 166, 255, 0.24);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--text);
+  background:
+    radial-gradient(circle at 8% -12%, rgba(88,166,255,.15), transparent 34%),
+    radial-gradient(circle at 94% 6%, rgba(240,201,74,.12), transparent 32%),
+    radial-gradient(circle at 50% 100%, rgba(56,214,107,.055), transparent 40%),
+    linear-gradient(135deg, #060b11 0%, #08101a 42%, #090d14 100%);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.028), transparent 18%, transparent 78%, rgba(88,166,255,.025));
+  z-index: -1;
+}
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: #080d14; }
+::-webkit-scrollbar-thumb { background: #2d3b4f; border: 3px solid #080d14; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #41536d; }
+
+.agent-header {
+  padding: 13px clamp(18px, 3vw, 48px);
+  background: rgba(9, 15, 24, 0.92);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+}
+
+.agent-header-inner,
+main.agent-main,
+.agent-main {
+  width: min(1500px, calc(100vw - 72px)) !important;
+}
+
+.agent-logo {
+  border-radius: 13px;
+  background: linear-gradient(135deg, #6ab2ff, #358cff);
+  box-shadow: 0 14px 30px rgba(88, 166, 255, .24), inset 0 1px 0 rgba(255,255,255,.34);
+}
+
+.agent-brand h1 {
+  letter-spacing: -0.035em;
+}
+
+.agent-tagline {
+  color: #8fa0b8;
+}
+
+.agent-status-strip {
+  gap: 9px;
+}
+
+.status-dot {
+  box-shadow: 0 0 18px currentColor;
+}
+
+.badge-safe,
+.badge-danger,
+.badge-neutral,
+.badge-warn,
+.chart-pill,
+.candidate-dir,
+.trade-pill,
+.risk-badge,
+.status-pill {
+  min-height: 28px;
+  border-radius: 999px;
+  font-weight: 900;
+  letter-spacing: .01em;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.badge-safe { background: rgba(56,214,107,.12); color: #66ef93; border-color: rgba(56,214,107,.34); }
+.badge-danger { background: rgba(255,92,87,.13); color: #ff8a86; border-color: rgba(255,92,87,.38); }
+.badge-neutral { background: rgba(148,163,184,.12); color: #b3c0d2; border-color: rgba(148,163,184,.24); }
+.badge-warn { background: rgba(255,176,32,.13); color: #ffc65d; border-color: rgba(255,176,32,.38); }
+
+.agent-nav {
+  top: 67px;
+  padding: 10px clamp(18px,3vw,48px);
+  background: rgba(9, 15, 24, 0.88);
+  border-bottom: 1px solid rgba(148,163,184,.15);
+  box-shadow: 0 10px 28px rgba(0,0,0,.20);
+}
+
+.agent-tab {
+  padding: 10px 16px;
+  color: #97a6ba;
+  transition: transform .14s ease, background .14s ease, color .14s ease, border-color .14s ease;
+}
+.agent-tab:hover {
+  transform: translateY(-1px);
+  background: rgba(88,166,255,.08);
+  border-color: rgba(88,166,255,.22);
+}
+.agent-tab.active {
+  background: linear-gradient(135deg, #f5cf53, #f8dc83);
+  border-color: rgba(255,236,170,.78);
+  box-shadow: 0 12px 28px rgba(240,201,74,.24), inset 0 1px 0 rgba(255,255,255,.45);
+}
+
+main.agent-main,
+.agent-main {
+  padding-top: 28px !important;
+}
+
+.agent-card,
+.candidate-card,
+.risk-cell,
+.perf-cell,
+.proposal-card,
+.quick-trade-panel,
+.chart-account-panel,
+.chart-trade-chip,
+.chart-money-cell,
+.status-panel,
+.scan-status,
+.wallet-summary-cell {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012)),
+    linear-gradient(135deg, rgba(88,166,255,.025), rgba(240,201,74,.018)),
+    var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-soft);
+}
+
+.agent-card {
+  padding: clamp(22px, 1.65vw, 30px);
+  border-radius: var(--radius);
+}
+
+.agent-card:hover,
+.candidate-card:hover,
+.risk-cell:hover,
+.perf-cell:hover,
+.proposal-card:hover {
+  border-color: rgba(148,163,184,.34) !important;
+}
+
+.agent-card h2,
+.section-heading,
+.chart-account-title,
+.chart-trade-chip strong,
+.candidate-pair,
+.risk-pair,
+.open-trade-card strong {
+  letter-spacing: -0.035em;
+}
+
+.agent-card h2 {
+  font-size: 17px;
+  margin-bottom: 15px;
+}
+
+.card-eyebrow,
+.chart-money-label,
+.perf-label,
+.clock-label {
+  color: #91a7c3;
+  font-weight: 900;
+}
+
+.card-big-value {
+  letter-spacing: -0.06em;
+  text-shadow: 0 12px 34px rgba(88,166,255,.16);
+}
+
+.card-sub,
+.small,
+.muted,
+.candidate-setup,
+.candidate-reason,
+.chart-account-sub,
+.chart-account-note,
+.perf-meta,
+.proposal-sugg {
+  color: var(--muted);
+}
+
+button,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-safe,
+.btn-buy,
+.btn-sell,
+.btn-quick-close {
+  min-height: 40px;
+  border-radius: 11px !important;
+  font-weight: 950 !important;
+  letter-spacing: -0.015em;
+  border: 1px solid transparent;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, filter .14s ease;
+}
+button:hover,
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-danger:hover,
+.btn-safe:hover,
+.btn-buy:hover,
+.btn-sell:hover,
+.btn-quick-close:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+button:active,
+.btn-primary:active,
+.btn-secondary:active,
+.btn-danger:active,
+.btn-safe:active,
+.btn-buy:active,
+.btn-sell:active,
+.btn-quick-close:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #65b3ff, #3f95f8) !important;
+  color: #07111e !important;
+  border-color: rgba(156,209,255,.42) !important;
+  box-shadow: 0 13px 26px rgba(88,166,255,.22), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.btn-secondary {
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015)), #243246 !important;
+  color: #f3f7ff !important;
+  border-color: rgba(148,163,184,.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+.btn-danger,
+.btn-sell {
+  background: linear-gradient(135deg, #ff6861, #ef423b) !important;
+  color: #fff !important;
+  border-color: rgba(255,159,153,.34) !important;
+  box-shadow: 0 13px 26px rgba(255,92,87,.18), inset 0 1px 0 rgba(255,255,255,.28);
+}
+.btn-safe,
+.btn-buy {
+  background: linear-gradient(135deg, #4add75, #31ba57) !important;
+  color: #06130a !important;
+  border-color: rgba(127,255,169,.34) !important;
+  box-shadow: 0 13px 26px rgba(56,214,107,.16), inset 0 1px 0 rgba(255,255,255,.30);
+}
+.btn-quick-close {
+  background: linear-gradient(135deg, #ffc34d, #f59e0b) !important;
+  color: #141006 !important;
+  border-color: rgba(255,218,127,.36) !important;
+}
+
+input,
+select,
+textarea {
+  background: #223044 !important;
+  color: var(--text) !important;
+  border: 1px solid rgba(148,163,184,.22) !important;
+  border-radius: 10px !important;
+  min-height: 40px;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(88,166,255,.68) !important;
+  box-shadow: var(--focus-ring), inset 0 1px 0 rgba(255,255,255,.04);
+}
+label {
+  color: #adc0d8;
+  font-weight: 850;
+}
+
+.agent-grid-2,
+.agent-grid-3,
+.candidates-grid,
+.perf-grid,
+.pair-risk-map,
+.wallet-summary-grid,
+.chart-workspace {
+  gap: 22px !important;
+}
+
+.card-accent-blue,
+.card-accent-green,
+.card-accent-orange,
+.card-accent-red {
+  position: relative;
+  border-left-width: 0 !important;
+}
+.card-accent-blue::before,
+.card-accent-green::before,
+.card-accent-orange::before,
+.card-accent-red::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.card-accent-blue::before { background: linear-gradient(180deg, #7cc4ff, #358cff); }
+.card-accent-green::before { background: linear-gradient(180deg, #66ef93, #2fb755); }
+.card-accent-orange::before { background: linear-gradient(180deg, #ffd36a, #f5a90b); }
+.card-accent-red::before { background: linear-gradient(180deg, #ff938e, #f3423b); }
+
+.status-panel,
+.audit-log,
+.trade-journal,
+.scan-status {
+  border-radius: 14px;
+}
+
+.audit-log table,
+.trade-table,
+.trade-journal table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.audit-log th,
+.audit-log td,
+.trade-table th,
+.trade-table td,
+.trade-journal th,
+.trade-journal td {
+  border-bottom: 1px solid rgba(148,163,184,.13) !important;
+  padding: 12px 14px !important;
+}
+.audit-log th,
+.trade-table th,
+.trade-journal th {
+  color: #b7c8de;
+  background: rgba(148,163,184,.10) !important;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+.audit-log tr:hover td,
+.trade-table tr:hover td,
+.trade-journal tr:hover td {
+  background: rgba(88,166,255,.045);
+}
+
+.candidate-card {
+  position: relative;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 18px 46px rgba(0,0,0,.23), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.candidate-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(56,214,107,.08), transparent 42%);
+}
+.candidate-conf {
+  color: #ffc947 !important;
+  letter-spacing: -0.06em;
+}
+
+.rejected-row,
+.nosetup-row,
+.open-trade-card {
+  background: rgba(27,38,52,.92) !important;
+  border: 1px solid rgba(148,163,184,.22) !important;
+  border-radius: 14px !important;
+}
+
+.chart-frame {
+  border-radius: 16px !important;
+  border-color: rgba(148,163,184,.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 20px 50px rgba(0,0,0,.24);
+}
+.chart-pill {
+  background: rgba(18,27,39,.74) !important;
+  border-color: rgba(148,163,184,.24) !important;
+  padding: 6px 11px !important;
+}
+.chart-account-panel {
+  border-radius: 16px !important;
+}
+.chart-money-value,
+.chart-position-pnl {
+  letter-spacing: -0.04em;
+}
+
+.kill-status-safe,
+.kill-status-active,
+.safety-notice {
+  border-radius: 14px !important;
+}
+
+.wallet-actions,
+.quick-trade-row,
+.journal-filters,
+.card-actions,
+.agent-actions {
+  gap: 12px !important;
+}
+
+.london-clock {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+.clock-display {
+  letter-spacing: -0.06em;
+  text-shadow: 0 18px 42px rgba(88,166,255,.18);
+}
+
+#authStatus,
+.auth-status,
+.signin-status,
+.user-status {
+  box-shadow: 0 14px 28px rgba(0,0,0,.26) !important;
+}
+
+@media (max-width: 1180px) {
+  .agent-header-inner {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .agent-actions {
+    justify-content: flex-start;
+  }
+  .agent-nav { top: auto; }
+}
+
+@media (max-width: 760px) {
+  .agent-header-inner,
+  main.agent-main,
+  .agent-main {
+    width: min(100vw - 28px, 1500px) !important;
+  }
+  .agent-card {
+    padding: 18px;
+  }
+  .agent-tab {
+    padding: 9px 12px;
+  }
+}
