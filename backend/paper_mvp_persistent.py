@@ -6,6 +6,7 @@ import os
 import random
 import threading
 import uuid
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -331,9 +332,22 @@ def update_trade(item: Dict[str, Any]) -> None:
                 break
 
 
+def _stable_seed(text: str) -> int:
+    """Deterministic string hash for random.seed().
+
+    Python's built-in hash() is randomized per process (PYTHONHASHSEED), so
+    seeding with hash(pair) produced a different synthetic "current price"
+    every time a new serverless process picked up a request. A trade opened
+    in one process and checked against a fresh process moments later could
+    see a completely unrelated price and register a spurious stop-loss or
+    take-profit hit that had nothing to do with real market movement.
+    """
+    return zlib.crc32(text.encode("utf-8"))
+
+
 def base_price(pair: str) -> float:
     bases = {"GBP/USD": 1.2700, "EUR/USD": 1.0850, "USD/JPY": 156.20, "EUR/GBP": 0.8550, "GBP/JPY": 198.50, "XAU/USD": 2350.0}
-    random.seed(abs(hash(pair)) % 100000 + int(datetime.utcnow().strftime("%Y%m%d%H")))
+    random.seed(_stable_seed(pair) % 100000 + int(datetime.utcnow().strftime("%Y%m%d%H")))
     return bases.get(pair, 1.0) * (1 + random.uniform(-0.002, 0.002))
 
 
@@ -385,7 +399,7 @@ def synthetic_candles(pair: str) -> List[Dict[str, Any]]:
     pip = pip_size(pair)
     vol = 12 * pip if pair != "XAU/USD" else 2.0
     out = []
-    random.seed(abs(hash(pair + "candles")) % 100000 + int(datetime.utcnow().strftime("%Y%m%d")))
+    random.seed(_stable_seed(pair + "candles") % 100000 + int(datetime.utcnow().strftime("%Y%m%d")))
     for i in range(120):
         drift = math.sin(i / 12) * vol * 0.35
         op = price

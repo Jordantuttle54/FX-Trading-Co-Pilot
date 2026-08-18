@@ -86,7 +86,7 @@ def _synthetic_candles(pair: str, timeframe: str, count: int) -> List[Dict[str, 
     cfg = TIMEFRAMES[timeframe]
     count = max(20, min(int(count), 500))
     seed_key = f"{pair}-{timeframe}-{datetime.now(timezone.utc).strftime('%Y%m%d%H')}"
-    random.seed(abs(hash(seed_key)) % 1000000)
+    random.seed(base._stable_seed(seed_key) % 1000000)
     quote = _current_quote(pair)
     price = float((quote or {}).get("price") or base.base_price(pair))
     pip = base.pip_size(pair)
