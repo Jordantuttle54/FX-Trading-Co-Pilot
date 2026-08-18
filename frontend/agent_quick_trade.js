@@ -2,6 +2,8 @@
 'use strict';
 
 (function () {
+  const PAIRS = ['GBP/USD', 'EUR/USD', 'USD/JPY', 'EUR/GBP', 'GBP/JPY', 'XAU/USD'];
+
   let closeChoicesTimer = null;
   let closeChoicesLoading = false;
   let closeChoicesPending = false;
@@ -32,8 +34,15 @@
     return api(path, { method: 'POST', body: JSON.stringify(body || {}) });
   }
 
+  function optionalNumber(id) {
+    const raw = qs(id)?.value;
+    if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+
   function selectedPair() {
-    return qs('chartPair')?.value || 'GBP/USD';
+    return qs('quickTradePair')?.value || qs('chartPair')?.value || 'GBP/USD';
   }
 
   function selectedBalance() {
@@ -53,8 +62,31 @@
     return value > 0 ? value : null;
   }
 
+  function selectedManualSl() {
+    return optionalNumber('quickTradeManualSl');
+  }
+
+  function selectedManualTp() {
+    return optionalNumber('quickTradeManualTp');
+  }
+
   function selectedQuickCloseTrade() {
     return qs('quickCloseTradeSelect')?.value || '';
+  }
+
+  function syncQuickPairFromChart() {
+    const quickPair = qs('quickTradePair');
+    const chartPair = qs('chartPair');
+    if (quickPair && chartPair && quickPair.value !== chartPair.value) quickPair.value = chartPair.value;
+  }
+
+  function syncChartPairFromQuick() {
+    const quickPair = qs('quickTradePair');
+    const chartPair = qs('chartPair');
+    if (quickPair && chartPair && chartPair.value !== quickPair.value) {
+      chartPair.value = quickPair.value;
+      if (typeof window.loadAgentChart === 'function') window.loadAgentChart();
+    }
   }
 
   function injectStyles() {
@@ -62,58 +94,358 @@
     const style = document.createElement('style');
     style.id = 'quickTradeStyles';
     style.textContent = `
-      .quick-trade-panel { border:1px solid var(--border); background:rgba(15,23,42,.72); border-radius:14px; padding:14px; margin:16px 0; }
-      .quick-trade-row { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
-      .quick-trade-row label { display:flex; flex-direction:column; gap:5px; color:var(--text-muted); font-size:11px; }
-      .quick-trade-row input, .quick-trade-row select { min-width:110px; }
-      .quick-close-select { min-width:260px; }
-      .quick-trade-warning { color:var(--text-muted); font-size:11px; margin-top:10px; }
-      .quick-trade-result { font-size:12px; margin-top:10px; }
-      .btn-buy { background:#16a34a; color:#fff; border:0; border-radius:8px; padding:10px 12px; font-weight:800; cursor:pointer; }
-      .btn-sell { background:#dc2626; color:#fff; border:0; border-radius:8px; padding:10px 12px; font-weight:800; cursor:pointer; }
-      .btn-quick-close { background:#f59e0b; color:#111827; border:0; border-radius:8px; padding:10px 12px; font-weight:800; cursor:pointer; }
+      #tab-trades #agentChartPanel {
+        padding: 14px !important;
+      }
+      #tab-trades #agentChartPanel .chart-head-row {
+        margin-bottom: 8px !important;
+      }
+      #tab-trades #agentChartPanel .chart-head-row h2 {
+        margin-bottom: 4px !important;
+      }
+      #tab-trades #agentChartPanel .chart-toolbar {
+        align-items: end !important;
+        gap: 10px !important;
+        margin: 8px 0 10px !important;
+      }
+      #tab-trades #agentChartPanel .chart-toolbar label {
+        font-size: 10px !important;
+        gap: 3px !important;
+      }
+      #tab-trades #agentChartPanel .chart-toolbar select,
+      #tab-trades #agentChartPanel .chart-toolbar button {
+        min-height: 34px !important;
+        height: 34px !important;
+      }
+      #tab-trades #agentChartPanel .chart-toolbar select {
+        min-width: 118px !important;
+      }
+      #tab-trades #agentChartPanel .chart-workspace {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1.58fr) minmax(360px, .92fr) !important;
+        grid-template-rows: auto auto !important;
+        gap: 12px !important;
+        align-items: start !important;
+      }
+      #tab-trades #agentChartPanel .chart-main-panel {
+        grid-column: 1 !important;
+        grid-row: 1 / span 2 !important;
+        min-width: 0 !important;
+      }
+      #tab-trades #agentChartPanel #chartAccountPanel {
+        grid-column: 2 !important;
+        grid-row: 1 !important;
+        min-height: 0 !important;
+        padding: 12px !important;
+      }
+      #tab-trades #agentChartPanel #quickTradePanel {
+        grid-column: 2 !important;
+        grid-row: 2 !important;
+        margin: 0 !important;
+        min-width: 0 !important;
+      }
+      #tab-trades #agentChartPanel .chart-frame {
+        min-height: 340px !important;
+      }
+      #tab-trades #agentChartPanel #agentLiveChart {
+        height: 340px !important;
+      }
+      #tab-trades #agentChartPanel.chart-expanded .chart-workspace {
+        grid-template-columns: 1fr !important;
+      }
+      #tab-trades #agentChartPanel.chart-expanded .chart-main-panel {
+        grid-column: 1 !important;
+        grid-row: 1 !important;
+      }
+      #tab-trades #agentChartPanel.chart-expanded #quickTradePanel,
+      #tab-trades #agentChartPanel.chart-expanded #chartAccountPanel {
+        display: none !important;
+      }
+      #tab-trades #agentChartPanel.chart-expanded .chart-frame {
+        min-height: 680px !important;
+      }
+      #tab-trades #agentChartPanel.chart-expanded #agentLiveChart {
+        height: 680px !important;
+      }
+      #tab-trades #agentChartPanel .chart-status-row {
+        gap: 7px !important;
+        margin-top: 7px !important;
+      }
+      #tab-trades #agentChartPanel .chart-pill {
+        min-height: 26px !important;
+        padding: 4px 9px !important;
+        font-size: 10px !important;
+      }
+      #tab-trades #agentChartPanel .chart-trade-list {
+        margin-top: 8px !important;
+      }
+      #tab-trades #agentChartPanel .chart-money-grid {
+        gap: 8px !important;
+        margin: 8px 0 !important;
+      }
+      #tab-trades #agentChartPanel .chart-money-cell {
+        padding: 9px !important;
+        min-height: 58px !important;
+      }
+      #tab-trades #agentChartPanel .chart-money-label {
+        font-size: 10px !important;
+      }
+      #tab-trades #agentChartPanel .chart-money-value {
+        font-size: 15px !important;
+      }
+      #tab-trades #agentChartPanel .chart-position-list {
+        max-height: 145px !important;
+        margin-top: 8px !important;
+        padding-top: 8px !important;
+      }
+      .quick-trade-panel {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(15,23,42,.94), rgba(7,13,24,.96));
+        border-radius: 14px;
+        padding: 12px;
+        box-shadow: 0 14px 34px rgba(0,0,0,.20);
+      }
+      .quick-trade-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .quick-trade-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 950;
+        letter-spacing: -0.03em;
+      }
+      .quick-trade-icon {
+        color: #facc15;
+        font-size: 16px;
+      }
+      .quick-trade-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 9px;
+      }
+      .quick-trade-field {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        gap: 4px;
+      }
+      .quick-trade-field label,
+      .quick-trade-field span {
+        color: var(--muted, #9fb0c7);
+        font-size: 10px;
+        font-weight: 850;
+        line-height: 1.1;
+      }
+      .quick-trade-field input,
+      .quick-trade-field select,
+      .quick-close-select {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: 34px !important;
+        min-height: 34px !important;
+        font-size: 12px !important;
+        padding: 7px 9px !important;
+      }
+      .quick-trade-action-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 8px 0;
+      }
+      .quick-trade-close-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        align-items: end;
+      }
+      .quick-close-select-row {
+        margin-top: 8px;
+      }
+      .quick-trade-panel button,
+      .quick-trade-panel .btn-primary,
+      .quick-trade-panel .btn-buy,
+      .quick-trade-panel .btn-sell,
+      .quick-trade-panel .btn-quick-close {
+        width: 100%;
+        min-height: 34px !important;
+        height: 34px !important;
+        padding: 7px 10px !important;
+        font-size: 12px !important;
+        white-space: nowrap;
+      }
+      .quick-trade-warning {
+        color: var(--text-muted, #9fb0c7);
+        font-size: 10px;
+        margin-top: 8px;
+        line-height: 1.4;
+      }
+      .quick-trade-result {
+        font-size: 11px;
+        margin-top: 7px;
+        line-height: 1.35;
+      }
+      .btn-buy {
+        background: #16a34a;
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        font-weight: 900;
+        cursor: pointer;
+      }
+      .btn-sell {
+        background: #dc2626;
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        font-weight: 900;
+        cursor: pointer;
+      }
+      .btn-quick-close {
+        background: #f59e0b;
+        color: #111827;
+        border: 0;
+        border-radius: 8px;
+        font-weight: 900;
+        cursor: pointer;
+      }
+      .btn-close-all {
+        background: rgba(15,23,42,.70) !important;
+        color: #f8fafc !important;
+        border: 1px solid rgba(248,113,113,.45) !important;
+        border-radius: 8px !important;
+        font-weight: 900 !important;
+      }
+      .btn-close-all:hover {
+        background: rgba(127,29,29,.35) !important;
+      }
+      @media (max-width: 1180px) {
+        #tab-trades #agentChartPanel .chart-workspace {
+          grid-template-columns: 1fr !important;
+        }
+        #tab-trades #agentChartPanel .chart-main-panel,
+        #tab-trades #agentChartPanel #chartAccountPanel,
+        #tab-trades #agentChartPanel #quickTradePanel {
+          grid-column: 1 !important;
+          grid-row: auto !important;
+        }
+        #tab-trades #agentChartPanel #chartAccountPanel { order: 2; }
+        #tab-trades #agentChartPanel #quickTradePanel { order: 3; }
+      }
+      @media (max-width: 760px) {
+        .quick-trade-grid,
+        .quick-trade-action-grid,
+        .quick-trade-close-grid {
+          grid-template-columns: 1fr !important;
+        }
+        #tab-trades #agentChartPanel .chart-frame { min-height: 320px !important; }
+        #tab-trades #agentChartPanel #agentLiveChart { height: 320px !important; }
+      }
     `;
     document.head.appendChild(style);
+  }
+
+  function quickPairOptions() {
+    const selected = qs('chartPair')?.value || 'GBP/USD';
+    return PAIRS.map(pair => `<option value="${pair}" ${pair === selected ? 'selected' : ''}>${pair}</option>`).join('');
+  }
+
+  function positionQuickPanel(panel) {
+    const accountPanel = qs('chartAccountPanel');
+    const chartPanel = qs('agentChartPanel');
+    const toolbar = chartPanel?.querySelector('.chart-toolbar');
+
+    if (accountPanel && accountPanel.parentNode && panel.parentNode !== accountPanel.parentNode) {
+      accountPanel.insertAdjacentElement('afterend', panel);
+      return;
+    }
+    if (accountPanel && accountPanel.nextSibling !== panel) {
+      accountPanel.insertAdjacentElement('afterend', panel);
+      return;
+    }
+    if (toolbar && toolbar.parentNode && !panel.parentNode) {
+      toolbar.parentNode.insertBefore(panel, toolbar.nextSibling);
+    }
   }
 
   function injectQuickTradePanel() {
     injectStyles();
     const chartPanel = qs('agentChartPanel');
-    if (!chartPanel || qs('quickTradePanel')) return;
+    if (!chartPanel) return;
 
-    const panel = document.createElement('div');
+    let panel = qs('quickTradePanel');
+    if (panel) {
+      positionQuickPanel(panel);
+      syncQuickPairFromChart();
+      return;
+    }
+
+    panel = document.createElement('div');
     panel.id = 'quickTradePanel';
     panel.className = 'quick-trade-panel';
     panel.innerHTML = `
-      <h3 style="font-size:15px;margin:0 0 12px">Quick Paper Trading</h3>
-      <div class="quick-trade-row">
-        <label>Balance
+      <div class="quick-trade-title-row">
+        <div class="quick-trade-title"><span class="quick-trade-icon">&#9889;</span> Quick Paper Trading</div>
+      </div>
+
+      <div class="quick-trade-grid">
+        <div class="quick-trade-field">
+          <span>Balance</span>
           <input id="quickTradeBalance" type="number" value="${escapeHtml(qs('scanBalance')?.value || 10000)}" min="100" step="100">
-        </label>
-        <label>Risk %
+        </div>
+        <div class="quick-trade-field">
+          <span>Risk %</span>
           <input id="quickTradeRisk" type="number" value="0.5" min="0.01" max="5" step="0.01">
-        </label>
-        <label>Stop pips
+        </div>
+        <div class="quick-trade-field">
+          <span>Stop pips</span>
           <input id="quickTradeStopPips" type="number" value="10" min="1" step="1">
-        </label>
-        <label>RR
+        </div>
+        <div class="quick-trade-field">
+          <span>SL price</span>
+          <input id="quickTradeManualSl" type="number" placeholder="Optional" step="0.00001">
+        </div>
+        <div class="quick-trade-field">
+          <span>TP price</span>
+          <input id="quickTradeManualTp" type="number" placeholder="Optional" step="0.00001">
+        </div>
+        <div class="quick-trade-field">
+          <span>RR</span>
           <input id="quickTradeRR" type="number" value="1" min="0.1" step="0.1">
-        </label>
+        </div>
+        <div class="quick-trade-field" style="grid-column:1 / -1;">
+          <span>Pair</span>
+          <select id="quickTradePair">${quickPairOptions()}</select>
+        </div>
+      </div>
+
+      <div class="quick-trade-action-grid">
         <button class="btn-buy" onclick="quickOpenPersonalTrade('buy')">Personal Buy</button>
         <button class="btn-sell" onclick="quickOpenPersonalTrade('sell')">Personal Sell</button>
         <button class="btn-primary" onclick="quickOpenAiTrade()">AI Quick Open</button>
-        <label>Close open trade
-          <select id="quickCloseTradeSelect" class="quick-close-select"><option value="">Loading...</option></select>
-        </label>
-        <button class="btn-quick-close" onclick="quickCloseSelectedTrade()">Quick Close</button>
       </div>
-      <div class="quick-trade-warning">Paper only. Open buttons use the selected chart pair. Quick Close closes the selected open paper trade at the latest available market quote.</div>
+
+      <div class="quick-trade-close-grid">
+        <button class="btn-quick-close" onclick="quickCloseSelectedTrade()">Quick Close</button>
+        <button class="btn-close-all" onclick="quickCloseAllTrades()">Close All Trades</button>
+      </div>
+      <div class="quick-trade-field quick-close-select-row">
+        <span>Close open trade</span>
+        <select id="quickCloseTradeSelect" class="quick-close-select"><option value="">Loading...</option></select>
+      </div>
+
+      <div class="quick-trade-warning">Paper only. Manual SL/TP are optional. If left blank, Stop pips and RR are used.</div>
       <div id="quickTradeResult" class="quick-trade-result"></div>
     `;
 
-    const toolbar = chartPanel.querySelector('.chart-toolbar');
-    if (toolbar && toolbar.parentNode) toolbar.parentNode.insertBefore(panel, toolbar.nextSibling);
-    else chartPanel.prepend(panel);
+    positionQuickPanel(panel);
+    qs('quickTradePair')?.addEventListener('change', syncChartPairFromQuick);
     scheduleQuickCloseChoices(50);
   }
 
@@ -179,33 +511,41 @@
     await Promise.allSettled(jobs);
   }
 
+  function personalPayload(direction) {
+    const payload = {
+      pair: selectedPair(),
+      direction,
+      account_balance: selectedBalance(),
+      risk_pct: selectedRiskPct(),
+      rr: selectedRR(),
+      stop_pips: selectedStopPips(),
+    };
+    const manualSl = selectedManualSl();
+    const manualTp = selectedManualTp();
+    if (manualSl !== null) {
+      payload.manual_sl = manualSl;
+      payload.stop_loss = manualSl;
+    }
+    if (manualTp !== null) {
+      payload.manual_tp = manualTp;
+      payload.take_profit = manualTp;
+    }
+    return payload;
+  }
+
   window.quickOpenPersonalTrade = async function quickOpenPersonalTrade(direction) {
-    const pair = selectedPair();
+    const payload = personalPayload(direction);
+    const pair = payload.pair;
     if (!confirm(`Open a PERSONAL paper ${String(direction).toUpperCase()} trade on ${pair}?`)) return;
     try {
-      const payload = {
-        pair,
-        direction,
-        account_balance: selectedBalance(),
-        risk_pct: selectedRiskPct(),
-        rr: selectedRR(),
-        stop_pips: selectedStopPips(),
-      };
       const result = await post('/api/agent/trades/quick-open', payload);
       showResult(`Personal paper ${String(direction).toUpperCase()} opened on ${pair}. Trade ID: ${result.trade_id || result.trade?.id || ''}`);
       await refreshTradingUi();
     } catch (e) {
       if (e.status === 409 && confirm(`A similar trade may already be open. Open another anyway?`)) {
         try {
-          const retry = await post('/api/agent/trades/quick-open', {
-            pair,
-            direction,
-            account_balance: selectedBalance(),
-            risk_pct: selectedRiskPct(),
-            rr: selectedRR(),
-            stop_pips: selectedStopPips(),
-            force_duplicate: true,
-          });
+          const retryPayload = { ...payload, force_duplicate: true };
+          const retry = await post('/api/agent/trades/quick-open', retryPayload);
           showResult(`Duplicate paper trade opened. Trade ID: ${retry.trade_id || retry.trade?.id || ''}`);
           await refreshTradingUi();
           return;
@@ -259,14 +599,47 @@
     window.quickCloseTrade(selectedQuickCloseTrade());
   };
 
+  window.quickCloseAllTrades = async function quickCloseAllTrades() {
+    try {
+      const data = await api('/api/agent/trades/open');
+      const rows = data.open_trades || data.trades || data.items || [];
+      if (!rows.length) return showResult('No open paper trades to close.', true);
+      const names = rows.slice(0, 8).map(t => t.display_name || t.friendly_name || `${t.pair || ''} ${String(t.direction || '').toUpperCase()}`).join('\n');
+      const more = rows.length > 8 ? `\n...and ${rows.length - 8} more` : '';
+      if (!confirm(`Close ALL ${rows.length} open paper trade(s) at the latest available market quotes?\n\n${names}${more}`)) return;
+
+      const results = [];
+      for (const trade of rows) {
+        const id = trade.id;
+        if (!id) continue;
+        try {
+          const closed = await post(`/api/agent/trades/${encodeURIComponent(id)}/quick-close`, { reason: 'Close all trades from dashboard' });
+          results.push({ ok: true, trade, closed });
+        } catch (e) {
+          results.push({ ok: false, trade, error: e });
+        }
+      }
+      const closedCount = results.filter(r => r.ok).length;
+      const failedCount = results.length - closedCount;
+      showResult(`Close all complete: ${closedCount} closed${failedCount ? `, ${failedCount} failed` : ''}.`, Boolean(failedCount));
+      await refreshTradingUi();
+    } catch (e) {
+      showResult(`Close all failed: ${e.message}`, true);
+    }
+  };
+
   function init() {
     injectQuickTradePanel();
     scheduleQuickCloseChoices(200);
     document.addEventListener('change', (event) => {
-      if (event.target && event.target.id === 'chartPair') scheduleQuickCloseChoices(100);
+      if (event.target && event.target.id === 'chartPair') {
+        syncQuickPairFromChart();
+        scheduleQuickCloseChoices(100);
+      }
+      if (event.target && event.target.id === 'quickTradePair') scheduleQuickCloseChoices(100);
     });
     const observer = new MutationObserver(() => {
-      if (!qs('quickTradePanel')) injectQuickTradePanel();
+      injectQuickTradePanel();
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
