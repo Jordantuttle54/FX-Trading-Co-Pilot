@@ -151,6 +151,13 @@ async def agent_execute_phase1(req: AgentExecutePhase1Request, user: str = Depen
         **candidate,
         "entry": execution_result["entry"],
         "entry_price": execution_result["entry"],
+        # OANDA fills re-anchor stop-loss/take-profit to its own real price
+        # (see execution._place_oanda_demo_trade) - the stored trade must use
+        # those, not the candidate's original (possibly synthetic) levels,
+        # otherwise our own auto-close check compares against the wrong price.
+        "stop_loss": execution_result.get("stop_loss", candidate.get("stop_loss")),
+        "take_profit": execution_result.get("take_profit", candidate.get("take_profit")),
+        "target": execution_result.get("take_profit", candidate.get("take_profit")),
         "broker_mode": execution_result["mode"],
         "order_id": execution_result["order_id"],
         "filled_at": execution_result["filled_at"],

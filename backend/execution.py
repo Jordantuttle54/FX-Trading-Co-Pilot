@@ -81,6 +81,14 @@ def _place_paper_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
 # OANDA demo execution
 # ---------------------------------------------------------------------------
 
+def _price_precision(pair: str) -> int:
+    if pair == "XAU/USD":
+        return 2
+    if "JPY" in pair:
+        return 3
+    return 5
+
+
 def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
     """
     Place a trade on the OANDA practice (demo) environment.
@@ -99,6 +107,34 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
         if candidate["direction"] == "sell":
             units = -abs(units)
 
+        # candidate['entry']/'stop_loss'/'take_profit' come from this app's own
+        # market analysis, which can be running on synthetic fallback data with
+        # no relation to OANDA's real price for this instrument. Sending those
+        # absolute levels straight to OANDA as a bracket order can put the
+        # stop/target on the wrong side of the real fill price - OANDA then
+        # either rejects the order outright or triggers the bracket instantly.
+        # Re-anchor the stop/target distance to OANDA's actual current price
+        # instead of trusting the (possibly synthetic) absolute levels.
+        pricing_url = f"{OANDA_PRACTICE_URL}/v3/accounts/{settings.oanda_account_id}/pricing"
+        with httpx.Client(timeout=12) as client:
+            price_resp = client.get(pricing_url, params={"instruments": instrument}, headers=headers)
+            price_resp.raise_for_status()
+            live_prices = price_resp.json().get("prices", [])
+        if not live_prices:
+            raise RuntimeError(f"OANDA returned no live price for {instrument}.")
+        live = live_prices[0]
+        reference_price = float(live["closeoutAsk"]) if candidate["direction"] == "buy" else float(live["closeoutBid"])
+
+        stop_distance = abs(candidate["entry"] - candidate["stop_loss"])
+        target_distance = abs(candidate["take_profit"] - candidate["entry"])
+        if candidate["direction"] == "buy":
+            stop_loss = reference_price - stop_distance
+            take_profit = reference_price + target_distance
+        else:
+            stop_loss = reference_price + stop_distance
+            take_profit = reference_price - target_distance
+
+        precision = _price_precision(candidate["pair"])
         payload = {
             "order": {
                 "type": "MARKET",
@@ -106,8 +142,8 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
                 "units": str(int(units)),
                 "timeInForce": "FOK",
                 "positionFill": "DEFAULT",
-                "stopLossOnFill": {"price": f"{candidate['stop_loss']:.5f}"},
-                "takeProfitOnFill": {"price": f"{candidate['take_profit']:.5f}"},
+                "stopLossOnFill": {"price": f"{stop_loss:.{precision}f}"},
+                "takeProfitOnFill": {"price": f"{take_profit:.{precision}f}"},
             }
         }
 
@@ -131,8 +167,8 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
             "pair": candidate["pair"],
             "direction": candidate["direction"],
             "entry": float(fill.get("price", candidate["entry"])),
-            "stop_loss": candidate["stop_loss"],
-            "take_profit": candidate["take_profit"],
+            "stop_loss": round(stop_loss, precision),
+            "take_profit": round(take_profit, precision),
             "position_units": candidate["position_units"],
             "risk_pct": candidate["risk_pct"],
             "risk_amount": candidate["risk_amount"],

@@ -21,6 +21,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import execution
+
 from .auth import current_user, make_session
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,6 +142,22 @@ def session_label() -> str:
 
 def oanda_configured() -> bool:
     return bool(os.getenv("OANDA_ACCESS_TOKEN") and os.getenv("OANDA_ACCOUNT_ID"))
+
+
+def execution_engine_mode() -> str:
+    """Diagnostic: which mode execution.place_demo_trade() will actually use.
+
+    Reported separately from oanda_configured() above because execution.py
+    reads credentials via backend.config.settings, a different config
+    object than the os.getenv() calls used elsewhere in this module - if
+    the two ever disagree, that's a real bug worth surfacing.
+    """
+    if execution.settings.enable_live_trading:
+        return "locked"
+    try:
+        return execution._active_mode()
+    except Exception:
+        return "unknown"
 
 
 def oanda_base() -> str:
@@ -592,7 +610,7 @@ async def health():
 
 @app.get("/api/config")
 async def config():
-    return {"watchlist": WATCHLIST, "selected_provider": "oanda" if oanda_configured() else "synthetic-fallback", "account_currency": "GBP", "paper_trading": {"starting_balance": START_BALANCE, "enforce_london_window": ENFORCE_WINDOW, "live_trading_locked": True, "storage_mode": storage_mode()}, "rules": {"max_risk_per_trade_pct": MAX_RISK, "max_daily_loss_pct": DAILY_LIMIT, "max_weekly_loss_pct": WEEKLY_LIMIT, "min_risk_reward": MIN_RR, "live_trading_locked": True, "min_confidence_score": MIN_CONF}, "configured": {"oanda": oanda_configured(), "auth_passcode": bool(os.getenv("AUTH_PASSCODE")), "auth_token_secret": bool(os.getenv("AUTH_TOKEN_SECRET")), "database": storage_mode() == "postgres"}}
+    return {"watchlist": WATCHLIST, "selected_provider": "oanda" if oanda_configured() else "synthetic-fallback", "account_currency": "GBP", "paper_trading": {"starting_balance": START_BALANCE, "enforce_london_window": ENFORCE_WINDOW, "live_trading_locked": True, "storage_mode": storage_mode()}, "rules": {"max_risk_per_trade_pct": MAX_RISK, "max_daily_loss_pct": DAILY_LIMIT, "max_weekly_loss_pct": WEEKLY_LIMIT, "min_risk_reward": MIN_RR, "live_trading_locked": True, "min_confidence_score": MIN_CONF}, "configured": {"oanda": oanda_configured(), "oanda_execution_engine": bool(execution.settings.oanda_access_token and execution.settings.oanda_account_id), "execution_mode": execution_engine_mode(), "auth_passcode": bool(os.getenv("AUTH_PASSCODE")), "auth_token_secret": bool(os.getenv("AUTH_TOKEN_SECRET")), "database": storage_mode() == "postgres"}}
 
 @app.get("/api/status")
 async def legacy_status():
