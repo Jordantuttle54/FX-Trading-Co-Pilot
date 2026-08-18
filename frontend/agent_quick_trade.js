@@ -70,6 +70,11 @@
     return optionalNumber('quickTradeManualTp');
   }
 
+  function selectedFixedUnits() {
+    const value = Number(qs('fixedTradeUnits')?.value || 0);
+    return value > 0 ? value : null;
+  }
+
   function selectedQuickCloseTrade() {
     return qs('quickCloseTradeSelect')?.value || '';
   }
@@ -519,6 +524,7 @@
       risk_pct: selectedRiskPct(),
       rr: selectedRR(),
       stop_pips: selectedStopPips(),
+      fixed_units: selectedFixedUnits(),
     };
     const manualSl = selectedManualSl();
     const manualTp = selectedManualTp();
@@ -562,13 +568,13 @@
     const pair = selectedPair();
     if (!confirm(`Ask AI to open a paper trade on ${pair}?`)) return;
     try {
-      const result = await post('/api/agent/trades/quick-open-ai', { pair, account_balance: selectedBalance() });
+      const result = await post('/api/agent/trades/quick-open-ai', { pair, account_balance: selectedBalance(), fixed_units: selectedFixedUnits() });
       showResult(`AI paper trade opened on ${pair}. Trade ID: ${result.trade_id || result.trade?.id || ''}`);
       await refreshTradingUi();
     } catch (e) {
       if (e.status === 409 && confirm(`A similar AI trade may already be open. Open another anyway?`)) {
         try {
-          const retry = await post('/api/agent/trades/quick-open-ai', { pair, account_balance: selectedBalance(), force_duplicate: true });
+          const retry = await post('/api/agent/trades/quick-open-ai', { pair, account_balance: selectedBalance(), fixed_units: selectedFixedUnits(), force_duplicate: true });
           showResult(`Duplicate AI paper trade opened. Trade ID: ${retry.trade_id || retry.trade?.id || ''}`);
           await refreshTradingUi();
           return;

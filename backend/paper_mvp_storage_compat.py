@@ -18,6 +18,7 @@ class AgentExecuteCompatRequest(BaseModel):
     pair: str
     account_balance: float = base.START_BALANCE
     candidate: Optional[Dict[str, Any]] = Field(default=None)
+    fixed_units: Optional[float] = None
 
 
 class LegacyPaperTradeIn(BaseModel):
@@ -316,7 +317,7 @@ base.storage_mode = compat_storage_mode
 
 
 def _candidate_from_request(req: AgentExecuteCompatRequest) -> Dict[str, Any]:
-    candidate = dict(req.candidate) if req.candidate and req.candidate.get("pair") == req.pair else base.score_candidate(req.pair, req.account_balance)
+    candidate = dict(req.candidate) if req.candidate and req.candidate.get("pair") == req.pair else base.score_candidate(req.pair, req.account_balance, getattr(req, "fixed_units", None))
     if candidate.get("status") != "trade_candidate":
         raise HTTPException(status_code=422, detail={"message": "Paper trade blocked by current setup rules.", "candidate": candidate})
     return candidate

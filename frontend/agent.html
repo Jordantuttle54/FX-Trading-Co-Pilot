@@ -112,8 +112,12 @@
         <label>Paper Account Balance ($)
           <input type="number" id="scanBalance" value="10000" min="1000" step="500"/>
         </label>
+        <label>Trade Size (units)
+          <input type="number" id="fixedTradeUnits" value="1000" min="1" step="1000"/>
+        </label>
         <button class="btn-primary" onclick="runScan()">&#9654; Run Full Scan</button>
       </div>
+      <p class="card-sub" style="margin-top:8px">Every trade opened from the scanner, quick-open, or AI quick-open uses this fixed unit size, not a % of balance - so exposure stays the same and predictable no matter what the AI is trading.</p>
       <div id="scannerStatus" class="scan-status"></div>
     </div>
 

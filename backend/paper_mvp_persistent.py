@@ -76,6 +76,7 @@ class JournalEntryIn(BaseModel):
 
 class AgentScanRequest(BaseModel):
     account_balance: float = START_BALANCE
+    fixed_units: Optional[float] = None
 
 class AgentExecuteRequest(BaseModel):
     pair: str
@@ -483,7 +484,7 @@ def analyse(pair: str) -> Dict[str, Any]:
     return {"pair": pair, "bias": bias, "trend": trend, "zone": f"{recent_low:.{p}f} support / {recent_high:.{p}f} resistance", "volatility": vol, "note": note, "price": rprice(pair, price), "indicators": {"sma20": rprice(pair, s20), "sma50": rprice(pair, s50), "recent_high": rprice(pair, recent_high), "recent_low": rprice(pair, recent_low), "avg_range_pips": round(avg_pips, 1)}}
 
 
-def score_candidate(pair: str, account_balance: float = START_BALANCE) -> Dict[str, Any]:
+def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None) -> Dict[str, Any]:
     a = analyse(pair)
     direction = "buy" if a["bias"] == "Bullish" else "sell" if a["bias"] == "Bearish" else "none"
     rr = 2.2 if direction != "none" else 0.0
@@ -502,8 +503,17 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE) -> Dict[s
         sl, tp = entry + stop_pips * pip, entry - stop_pips * rr * pip
     else:
         sl = tp = entry
-    risk_amount = round(account_balance * (MAX_RISK / 100), 2)
     stop_dist = abs(entry - sl)
+    if fixed_units and fixed_units > 0:
+        # A fixed unit size makes every trade's exposure predictable at a
+        # glance, instead of silently scaling with account balance and stop
+        # distance - risk_amount below is derived from it so the displayed
+        # £-at-risk stays honest about what this position actually risks.
+        position_units = round(fixed_units, 2)
+        risk_amount = round(position_units * stop_dist, 2)
+    else:
+        risk_amount = round(account_balance * (MAX_RISK / 100), 2)
+        position_units = round(risk_amount / stop_dist, 2) if stop_dist > 0 else 0
     rejects = []
     if direction == "none":
         rejects.append("No clean directional bias.")
@@ -514,7 +524,7 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE) -> Dict[s
     if KILL_SWITCH["active"]:
         rejects.append(KILL_SWITCH["reason"] or "Kill switch active.")
     status = "trade_candidate" if not rejects else ("no_setup" if direction == "none" else "rejected")
-    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "risk_amount": risk_amount, "position_units": round(risk_amount / stop_dist, 2) if stop_dist > 0 else 0, "risk_pct": MAX_RISK, "account_balance": account_balance, "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback"}
+    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback"}
 
 
 def calc_r(t: Dict[str, Any], close_price: float) -> float:
@@ -639,7 +649,7 @@ async def scan(req: ScanRequest, user: str = Depends(current_user)):
 
 @app.post("/api/agent/scan")
 async def agent_scan(req: AgentScanRequest, user: str = Depends(current_user)):
-    results = [score_candidate(p, req.account_balance) for p in WATCHLIST]
+    results = [score_candidate(p, req.account_balance, req.fixed_units) for p in WATCHLIST]
     SCAN_HISTORY[:0] = results
     for r in results:
         add_audit(user, "scan", r["status"], r.get("rejection_reason") or r.get("entry_reason", ""), r["pair"])
