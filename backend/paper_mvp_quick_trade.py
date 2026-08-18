@@ -24,12 +24,14 @@ class QuickOpenRequest(BaseModel):
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     force_duplicate: bool = False
+    fixed_units: Optional[float] = None
 
 
 class AiQuickOpenRequest(BaseModel):
     pair: str
     account_balance: float = Field(default_factory=lambda: getattr(base, "START_BALANCE", 10000.0))
     force_duplicate: bool = False
+    fixed_units: Optional[float] = None
 
 
 class QuickCloseRequest(BaseModel):
@@ -196,7 +198,13 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="SL creates an invalid risk distance.")
     rr = max(0.01, abs(take_profit - entry) / stop_distance)
 
-    risk_amount = round(balance * (risk_pct / 100.0), 2)
+    fixed_units = _as_float(req.fixed_units, 0.0)
+    if fixed_units > 0:
+        position_units = round(fixed_units, 2)
+        risk_amount = round(position_units * stop_distance, 2)
+    else:
+        risk_amount = round(balance * (risk_pct / 100.0), 2)
+        position_units = round(risk_amount / stop_distance, 2) if stop_distance > 0 else 0
     trade = {
         "pair": pair,
         "direction": direction,
@@ -219,7 +227,7 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
         "risk_pct": risk_pct,
         "risk_amount": risk_amount,
         "account_balance": balance,
-        "position_units": round(risk_amount / stop_distance, 2) if stop_distance > 0 else 0,
+        "position_units": position_units,
         "quote": quote,
         "manual_sl_used": manual_sl is not None,
         "manual_tp_used": manual_tp is not None,
@@ -249,7 +257,7 @@ async def quick_open_personal_trade(req: QuickOpenRequest, user: str = Depends(b
 @app.post("/api/agent/trades/quick-open-ai")
 async def quick_open_ai_trade(req: AiQuickOpenRequest, user: str = Depends(base.current_user)):
     pair = _pair(req.pair)
-    candidate = base.score_candidate(pair, req.account_balance)
+    candidate = base.score_candidate(pair, req.account_balance, req.fixed_units)
     if candidate.get("status") != "trade_candidate":
         raise HTTPException(status_code=409, detail={"message": "AI did not return an executable paper-trade candidate.", "candidate": candidate})
     direction = _direction(candidate.get("direction"))

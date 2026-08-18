@@ -17,6 +17,7 @@ class AgentExecutePhase1Request(BaseModel):
     account_balance: float = base.START_BALANCE
     candidate: Optional[Dict[str, Any]] = Field(default=None)
     force_duplicate: bool = False
+    fixed_units: Optional[float] = None
 
 
 class ManualCloseRequest(BaseModel):

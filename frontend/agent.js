@@ -192,6 +192,11 @@ function startClock() {
 // ---------------------------------------------------------------------------
 // Scanner
 // ---------------------------------------------------------------------------
+function fixedTradeUnits() {
+    const value = parseFloat(document.getElementById('fixedTradeUnits')?.value);
+    return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 async function runScan() {
     const balance = parseFloat(document.getElementById('scanBalance')?.value || 10000);
     const statusEl = document.getElementById('scannerStatus');
@@ -201,7 +206,7 @@ async function runScan() {
   document.getElementById('statusLabel').textContent = 'SCANNING...';
 
   try {
-        const data = await post('/api/agent/scan', { account_balance: balance });
+        const data = await post('/api/agent/scan', { account_balance: balance, fixed_units: fixedTradeUnits() });
         lastScanResults = data;
 
       // Store prices for trade management
@@ -315,7 +320,7 @@ async function executeTrade(pair) {
     const balance = parseFloat(document.getElementById('scanBalance')?.value || 10000);
     if (!confirm(`Execute a DEMO trade on ${pair}?\n\nThis will place a paper/demo trade using your current scan results. No real money is involved.`)) return;
     try {
-          const result = await post('/api/agent/execute', { pair, account_balance: balance });
+          const result = await post('/api/agent/execute', { pair, account_balance: balance, fixed_units: fixedTradeUnits() });
           alert(`Demo trade placed!\nTrade ID: ${result.trade_id}\nMode: ${result.execution?.mode}\nOrder: ${result.execution?.order_id}`);
           loadStatus();
           loadAllTrades();
