@@ -19,6 +19,10 @@ class QuickOpenRequest(BaseModel):
     risk_pct: float = Field(default_factory=lambda: getattr(base, "MAX_RISK", 0.5))
     rr: float = 2.0
     stop_pips: Optional[float] = None
+    manual_sl: Optional[float] = None
+    manual_tp: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
     force_duplicate: bool = False
 
 
@@ -39,6 +43,16 @@ def _as_float(value: Any, fallback: float = 0.0) -> float:
         return float(value)
     except Exception:
         return fallback
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    try:
+        if value is None or value == "":
+            return None
+        parsed = float(value)
+        return parsed if parsed > 0 else None
+    except Exception:
+        return None
 
 
 def _pair(value: str) -> str:
@@ -116,6 +130,29 @@ def _result_money(trade: Dict[str, Any], result_r: float) -> float:
     return round(risk_amount * result_r, 2)
 
 
+def _manual_levels(req: QuickOpenRequest) -> tuple[Optional[float], Optional[float]]:
+    manual_sl = _optional_float(req.manual_sl)
+    if manual_sl is None:
+        manual_sl = _optional_float(req.stop_loss)
+    manual_tp = _optional_float(req.manual_tp)
+    if manual_tp is None:
+        manual_tp = _optional_float(req.take_profit)
+    return manual_sl, manual_tp
+
+
+def _validate_manual_levels(pair: str, direction: str, entry: float, manual_sl: Optional[float], manual_tp: Optional[float]) -> None:
+    if manual_sl is not None:
+        if direction == "buy" and manual_sl >= entry:
+            raise HTTPException(status_code=400, detail="For a BUY trade, SL must be below the entry price.")
+        if direction == "sell" and manual_sl <= entry:
+            raise HTTPException(status_code=400, detail="For a SELL trade, SL must be above the entry price.")
+    if manual_tp is not None:
+        if direction == "buy" and manual_tp <= entry:
+            raise HTTPException(status_code=400, detail="For a BUY trade, TP must be above the entry price.")
+        if direction == "sell" and manual_tp >= entry:
+            raise HTTPException(status_code=400, detail="For a SELL trade, TP must be below the entry price.")
+
+
 def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
     pair = _pair(req.pair)
     direction = _direction(req.direction)
@@ -146,8 +183,20 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
         stop_loss = entry + (stop_pips * pip)
         take_profit = entry - (stop_pips * rr * pip)
 
-    risk_amount = round(balance * (risk_pct / 100.0), 2)
+    manual_sl, manual_tp = _manual_levels(req)
+    _validate_manual_levels(pair, direction, entry, manual_sl, manual_tp)
+    if manual_sl is not None:
+        stop_loss = manual_sl
+        stop_pips = abs(entry - stop_loss) / pip
+    if manual_tp is not None:
+        take_profit = manual_tp
+
     stop_distance = abs(entry - stop_loss)
+    if stop_distance <= 0:
+        raise HTTPException(status_code=400, detail="SL creates an invalid risk distance.")
+    rr = max(0.01, abs(take_profit - entry) / stop_distance)
+
+    risk_amount = round(balance * (risk_pct / 100.0), 2)
     trade = {
         "pair": pair,
         "direction": direction,
@@ -166,12 +215,14 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
         "stop_loss": base.rprice(pair, stop_loss),
         "take_profit": base.rprice(pair, take_profit),
         "target": base.rprice(pair, take_profit),
-        "stop_pips": stop_pips,
+        "stop_pips": round(stop_pips, 3),
         "risk_pct": risk_pct,
         "risk_amount": risk_amount,
         "account_balance": balance,
         "position_units": round(risk_amount / stop_distance, 2) if stop_distance > 0 else 0,
         "quote": quote,
+        "manual_sl_used": manual_sl is not None,
+        "manual_tp_used": manual_tp is not None,
         "live_trading_locked": True,
     }
     saved = compat.compat_save_trade(user, trade)
