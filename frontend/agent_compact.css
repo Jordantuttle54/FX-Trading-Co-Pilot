@@ -409,3 +409,92 @@ textarea {
     transform: none;
   }
 }
+
+/* Agent Dashboard visual pass: tighter cockpit cards with less dead space. */
+#tab-dashboard {
+  --dashboard-gap: 14px;
+}
+
+#tab-dashboard .agent-grid-3,
+#tab-dashboard .agent-grid-2 {
+  gap: var(--dashboard-gap) !important;
+  margin-bottom: var(--dashboard-gap) !important;
+}
+
+#tab-dashboard .agent-grid-3 > .agent-card {
+  min-height: 94px !important;
+  padding: 14px 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
+
+#tab-dashboard .card-eyebrow {
+  font-size: 10px !important;
+  letter-spacing: .08em !important;
+  margin-bottom: 7px !important;
+}
+
+#tab-dashboard .card-big-value {
+  font-size: clamp(29px, 2.3vw, 40px) !important;
+  line-height: .95 !important;
+}
+
+#tab-dashboard .card-sub {
+  font-size: 10px !important;
+  margin-top: 7px !important;
+}
+
+#tab-dashboard .agent-grid-2 > .agent-card {
+  min-height: 176px !important;
+}
+
+#tab-dashboard .status-panel {
+  min-height: 86px !important;
+  padding: 13px !important;
+  border-radius: 12px !important;
+}
+
+#tab-dashboard #openTradesPanel {
+  min-height: 86px !important;
+  font-size: 12px !important;
+}
+
+#tab-dashboard .card-actions {
+  margin-top: 9px !important;
+}
+
+#tab-dashboard #auditLogPanel {
+  max-height: 255px !important;
+  overflow: auto !important;
+  border-radius: 12px !important;
+}
+
+#tab-dashboard #auditLogPanel table {
+  margin-bottom: 0 !important;
+}
+
+#tab-dashboard #upcomingNewsPanel,
+#tab-dashboard .london-clock {
+  min-height: 122px !important;
+}
+
+#tab-dashboard .clock-display {
+  font-size: clamp(32px, 3.5vw, 46px) !important;
+}
+
+@media (min-width: 1100px) and (max-height: 900px) {
+  #tab-dashboard .agent-grid-3 > .agent-card {
+    min-height: 84px !important;
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+  }
+
+  #tab-dashboard .agent-grid-2 > .agent-card {
+    min-height: 158px !important;
+  }
+
+  #tab-dashboard #auditLogPanel {
+    max-height: 220px !important;
+  }
+}
