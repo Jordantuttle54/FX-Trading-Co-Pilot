@@ -40,6 +40,7 @@ function switchTab(name) {
   if (name === 'dashboard')   loadDashboard();
     if (name === 'trades')      { loadOpenTradesDetail(); loadAllTrades(); }
     if (name === 'calendar')    loadCalendar();
+    if (name === 'performance') loadBacktestPairPicker();
     if (name === 'settings')    loadSettings();
 }
 
@@ -506,6 +507,67 @@ async function loadCalendar() {
           }).join('');
     } catch (e) {
           el.innerHTML = `<span class="muted small">Error: ${e.message}</span>`;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Backtest
+// ---------------------------------------------------------------------------
+async function loadBacktestPairPicker() {
+    const el = document.getElementById('backtestPairPicker');
+    if (!el || el.dataset.loaded) return;
+    try {
+          const config = await api('/api/config');
+          const pairs = config.watchlist || [];
+          el.innerHTML = pairs.map(p => `
+                <label class="backtest-pair-check">
+                        <input type="checkbox" value="${p}" checked/> ${p}
+                              </label>
+                                `).join('');
+          el.dataset.loaded = '1';
+    } catch (e) {
+          el.innerHTML = `<span class="muted small">Error loading pairs: ${e.message}</span>`;
+    }
+}
+
+async function runBacktest() {
+    const el = document.getElementById('backtestPanel');
+    const pairs = Array.from(document.querySelectorAll('#backtestPairPicker input:checked')).map(i => i.value);
+    if (!pairs.length) { el.innerHTML = '<span class="muted">Select at least one pair.</span>'; return; }
+    const candle_count = parseInt(document.getElementById('backtestCandleCount').value, 10);
+    const lookback = parseInt(document.getElementById('backtestLookback').value, 10);
+    el.innerHTML = '<span class="muted">Running backtest... this can take a moment for larger candle counts.</span>';
+    try {
+          const data = await post('/api/agent/backtest', { pairs, candle_count, lookback });
+          const o = data.overall;
+          const providerNote = data.data_provider === 'synthetic-fallback'
+                ? '<div class="backtest-provider-note synthetic">&#9888; Synthetic fallback data (real OANDA history unavailable) &mdash; this run is for smoke-testing the engine only, not a real performance estimate.</div>'
+                        : '<div class="backtest-provider-note live">Data source: real OANDA H1 history.</div>';
+          const warningsNote = (data.warnings || []).length
+                ? `<div class="backtest-provider-note synthetic">${data.warnings.join('<br/>')}</div>`
+                        : '';
+          const pairCells = data.per_pair.map(p => `
+                <div class="perf-cell">
+                      <div class="perf-label">${p.pair}</div>
+                            <div class="perf-metric perf-${p.avg_r >= 0 ? 'positive' : 'negative'}">${p.avg_r >= 0 ? '+' : ''}${p.avg_r}R avg</div>
+                                  <div class="perf-meta">${p.trades} trades | WR: ${p.win_rate_pct}% | PF: ${p.profit_factor}</div>
+                                        </div>
+                                          `).join('');
+          el.innerHTML = `
+                ${providerNote}
+                      ${warningsNote}
+                            <div class="agent-grid-3" style="margin-bottom:12px">
+                                    ${perfCell('Trades', o.trades, '')}
+                                            ${perfCell('Win Rate', o.win_rate_pct + '%', o.win_rate_pct >= 50 ? 'positive' : 'negative')}
+                                                    ${perfCell('Avg R', (o.avg_r >= 0 ? '+' : '') + o.avg_r + 'R', o.avg_r >= 0 ? 'positive' : 'negative')}
+                                                            ${perfCell('Total R', (o.total_r >= 0 ? '+' : '') + o.total_r + 'R', o.total_r >= 0 ? 'positive' : 'negative')}
+                                                                    ${perfCell('Profit Factor', o.profit_factor, o.profit_factor >= 1.5 ? 'positive' : 'negative')}
+                                                                            ${perfCell('Max Drawdown', o.max_drawdown_r + 'R', 'negative')}
+                                                                                  </div>
+                                                                                        <div class="perf-grid">${pairCells}</div>
+                                                                                            `;
+    } catch (e) {
+          el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
     }
 }
 
