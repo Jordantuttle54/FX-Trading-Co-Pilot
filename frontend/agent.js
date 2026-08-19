@@ -40,7 +40,7 @@ function switchTab(name) {
   if (name === 'dashboard')   loadDashboard();
     if (name === 'trades')      { loadOpenTradesDetail(); loadAllTrades(); }
     if (name === 'calendar')    loadCalendar();
-    if (name === 'performance') loadBacktestPairPicker();
+    if (name === 'performance') { loadBacktestPairPicker(); loadCalibratePairPicker(); }
     if (name === 'settings')    loadSettings();
 }
 
@@ -627,6 +627,92 @@ function renderPerfBreakdown(data, containerId, title) {
     el.innerHTML = `<h3 style="font-size:13px;margin-bottom:8px;color:var(--text-muted)">${title}</h3>${inner}`;
 }
 
+// ---------------------------------------------------------------------------
+// Per-pair strategy calibration
+// ---------------------------------------------------------------------------
+let lastCalibration = null;
+
+async function loadCalibratePairPicker() {
+    const el = document.getElementById('calibratePair');
+    if (!el || el.dataset.loaded) return;
+    try {
+          const config = await api('/api/config');
+          const pairs = config.watchlist || [];
+          el.innerHTML = pairs.map(p => `<option value="${p}">${p}</option>`).join('');
+          el.dataset.loaded = '1';
+    } catch (e) {
+          el.innerHTML = `<option>Error loading pairs</option>`;
+    }
+}
+
+function fmtConfigDiff(cfg) {
+    return Object.entries(cfg).map(([k, v]) => `${k}: <strong>${v}</strong>`).join(', ');
+}
+
+async function runCalibration() {
+    const el = document.getElementById('calibratePanel');
+    const pair = document.getElementById('calibratePair').value;
+    const candle_count = parseInt(document.getElementById('calibrateCandleCount').value, 10);
+    const lookback = parseInt(document.getElementById('calibrateLookback').value, 10);
+    el.innerHTML = '<span class="muted">Running 45-combination sweep against real history... this can take a few seconds.</span>';
+    try {
+          const data = await post('/api/agent/strategy/calibrate', { pair, candle_count, lookback });
+          lastCalibration = data;
+          const providerNote = data.data_provider === 'synthetic-fallback'
+                ? '<div class="backtest-provider-note synthetic">&#9888; Synthetic fallback data (real OANDA history unavailable) - not a reliable calibration.</div>'
+                        : '<div class="backtest-provider-note live">Data source: real OANDA H1 history.</div>';
+          if (data.insufficient_data) {
+                el.innerHTML = `${providerNote}<div class="muted">No candidate setting beat the ${data.min_trades_for_trust}-trade minimum sample size on this window. Try a longer candle count, or this pair may just not have had enough clean setups in this period.</div>`;
+                return;
+          }
+          const cur = data.current_result, best = data.best_result;
+          el.innerHTML = `
+                ${providerNote}
+                      <div class="perf-grid">
+                              <div class="perf-cell">
+                                        <div class="perf-label">Current live config</div>
+                                                  <div class="perf-metric perf-${cur.total_r >= 0 ? 'positive' : 'negative'}">${cur.total_r >= 0 ? '+' : ''}${cur.total_r}R</div>
+                                                            <div class="perf-meta">${cur.trades} trades | WR: ${cur.win_rate_pct}% | PF: ${cur.profit_factor}</div>
+                                                                    </div>
+                                                                            <div class="perf-cell">
+                                                                                      <div class="perf-label">Best candidate found</div>
+                                                                                                <div class="perf-metric perf-${best.total_r >= 0 ? 'positive' : 'negative'}">${best.total_r >= 0 ? '+' : ''}${best.total_r}R</div>
+                                                                                                          <div class="perf-meta">${best.trades} trades | WR: ${best.win_rate_pct}% | PF: ${best.profit_factor}</div>
+                                                                                                                  </div>
+                                                                                                                        </div>
+                                                                                                                              <div class="small muted" style="margin:10px 0">Best candidate settings: ${fmtConfigDiff(data.best_config)}</div>
+                                                                                                                                    <button class="btn-safe" onclick="proposeCalibratedVersion()">Save as Proposed Strategy Version</button>
+                                                                                                                                          <div class="small muted" style="margin-top:8px">Tested ${data.combos_tested} combinations over ${data.candle_count} candles. Saving does not activate it - approve and activate below to make it live.</div>
+                                                                                                                                              `;
+    } catch (e) {
+          el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+    }
+}
+
+async function proposeCalibratedVersion() {
+    if (!lastCalibration || !lastCalibration.best_config) return;
+    const el = document.getElementById('calibratePanel');
+    try {
+          const desc = `${lastCalibration.pair} calibrated: ${lastCalibration.best_result.total_r >= 0 ? '+' : ''}${lastCalibration.best_result.total_r}R over ${lastCalibration.best_result.trades} trades (vs current ${lastCalibration.current_result.total_r}R)`;
+          await post('/api/agent/strategy/versions', { description: desc, config: { [lastCalibration.pair]: lastCalibration.best_config } });
+          el.insertAdjacentHTML('beforeend', '<div class="small" style="color:var(--green);margin-top:8px">&#9989; Saved as a proposed version - review and activate it in Strategy Version History below.</div>');
+          loadVersions();
+    } catch (e) {
+          el.insertAdjacentHTML('beforeend', `<div class="small" style="color:var(--red);margin-top:8px">Error saving proposal: ${e.message}</div>`);
+    }
+}
+
+async function approveStrategyVersion(id) {
+    try { await post(`/api/agent/strategy/versions/${id}/approve`, {}); loadVersions(); }
+    catch (e) { alert(`Error approving: ${e.message}`); }
+}
+
+async function activateStrategyVersion(id) {
+    if (!confirm('Activate this strategy version? It will immediately become the live configuration used for scanning.')) return;
+    try { await post(`/api/agent/strategy/versions/${id}/activate`, {}); loadVersions(); }
+    catch (e) { alert(`Error activating: ${e.message}`); }
+}
+
 async function loadProposals() {
     const el = document.getElementById('proposalsPanel');
     el.innerHTML = '<span class="muted">Generating proposals...</span>';
@@ -658,22 +744,25 @@ async function loadVersions() {
     el.innerHTML = '<span class="muted">Loading...</span>';
     try {
           const data = await api('/api/agent/strategy/versions');
-          if (!data.length) { el.innerHTML = '<div class="muted small">No strategy versions yet.</div>'; return; }
+          if (!data.length) { el.innerHTML = '<div class="muted small">No strategy versions yet. Calibrate a pair above and save it as a proposal.</div>'; return; }
           el.innerHTML = `
                 <table class="trade-table">
-                        <thead><tr><th>ID</th><th>Version</th><th>Description</th><th>Created</th><th>Approved</th><th>Active</th></tr></thead>
+                        <thead><tr><th>Description</th><th>Pairs</th><th>Created</th><th>Approved</th><th>Active</th><th>Actions</th></tr></thead>
                                 <tbody>
                                           ${data.map(v => `<tr>
-                                                      <td>${v.id}</td>
-                                                                  <td><code>${v.version}</code></td>
-                                                                              <td class="small muted">${v.description}</td>
-                                                                                          <td class="muted small">${(v.created_at || '').slice(0,16).replace('T',' ')}</td>
-                                                                                                      <td>${v.approved ? '<span style="color:var(--green)">&#9989;</span>' : '<span class="muted">&#10060;</span>'}</td>
-                                                                                                                  <td>${v.active ? '<span style="color:var(--accent)">&#9679;</span>' : ''}</td>
-                                                                                                                            </tr>`).join('')}
-                                                                                                                                    </tbody>
-                                                                                                                                          </table>
-                                                                                                                                              `;
+                                                      <td class="small">${v.description || '(no description)'}</td>
+                                                                  <td class="small muted">${Object.keys(v.config || {}).join(', ') || '-'}</td>
+                                                                              <td class="muted small">${(v.created_at || '').slice(0,16).replace('T',' ')}</td>
+                                                                                          <td>${v.approved ? '<span style="color:var(--green)">&#9989;</span>' : '<span class="muted">&#10060;</span>'}</td>
+                                                                                                      <td>${v.active ? '<span style="color:var(--accent)">&#9679; live</span>' : ''}</td>
+                                                                                                                  <td>
+                                                                                                                              ${!v.approved ? `<button class="btn-secondary" onclick="approveStrategyVersion('${v.id}')">Approve</button>` : ''}
+                                                                                                                                          ${v.approved && !v.active ? `<button class="btn-safe" onclick="activateStrategyVersion('${v.id}')">Activate</button>` : ''}
+                                                                                                                                                    </td>
+                                                                                                                                                              </tr>`).join('')}
+                                                                                                                                                                    </tbody>
+                                                                                                                                                                          </table>
+                                                                                                                                                                              `;
     } catch (e) {
           el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
     }
