@@ -8,7 +8,7 @@
   const CHART_LIB_MARKER = 'lightweight-charts';
 
   function currentPair() {
-    return document.getElementById('chartPair')?.value || 'GBP/USD';
+    return document.getElementById('chartPair')?.value || window.__agentCurrentChartPair || 'GBP/USD';
   }
 
   function precisionForPair(pair) {
@@ -18,33 +18,46 @@
     return 5;
   }
 
+  function minMoveForPrecision(precision) {
+    if (precision === 2) return 0.01;
+    if (precision === 3) return 0.001;
+    return 0.00001;
+  }
+
+  function formatFullPrice(value, pair) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '--';
+    return n.toFixed(precisionForPair(pair));
+  }
+
   function priceFormatForPair(pair) {
     const precision = precisionForPair(pair);
     return {
-      type: 'price',
-      precision,
-      minMove: precision === 2 ? 0.01 : precision === 3 ? 0.001 : 0.00001,
+      type: 'custom',
+      minMove: minMoveForPrecision(precision),
+      formatter: price => formatFullPrice(price, currentPair()),
     };
   }
 
-  function axisWidthForPair(pair) {
-    const precision = precisionForPair(pair);
-    if (precision === 5) return 96;
-    if (precision === 3) return 82;
-    return 76;
-  }
-
-  function applyChartAxis(chart, pair) {
-    if (!chart || typeof chart.applyOptions !== 'function') return;
-    try {
-      chart.applyOptions({
-        rightPriceScale: {
-          borderColor: '#243244',
-          alignLabels: true,
-          minimumWidth: axisWidthForPair(pair),
-        },
-      });
-    } catch (_) {}
+  function applyChartFormatting(chart, series, pair) {
+    const resolvedPair = pair || currentPair();
+    if (chart && typeof chart.applyOptions === 'function') {
+      try {
+        chart.applyOptions({
+          localization: {
+            priceFormatter: price => formatFullPrice(price, currentPair()),
+          },
+          rightPriceScale: {
+            borderColor: '#243244',
+            alignLabels: true,
+            entireTextOnly: true,
+          },
+        });
+      } catch (_) {}
+    }
+    if (series && typeof series.applyOptions === 'function') {
+      try { series.applyOptions({ priceFormat: priceFormatForPair(resolvedPair) }); } catch (_) {}
+    }
   }
 
   function patchLibrary() {
@@ -54,13 +67,16 @@
 
     const originalCreateChart = lib.createChart.bind(lib);
     lib.createChart = function createChartWithFullPriceLabels(container, options = {}) {
-      const initialPair = currentPair();
       const chart = originalCreateChart(container, {
         ...options,
+        localization: {
+          ...(options.localization || {}),
+          priceFormatter: price => formatFullPrice(price, currentPair()),
+        },
         rightPriceScale: {
           ...(options.rightPriceScale || {}),
-          minimumWidth: axisWidthForPair(initialPair),
           alignLabels: true,
+          entireTextOnly: true,
         },
       });
 
@@ -72,27 +88,24 @@
 
       if (originalAddCandlestickSeries) {
         chart.addCandlestickSeries = function addCandlestickSeriesWithFullPriceLabels(seriesOptions = {}) {
-          const selectedPair = currentPair();
           const series = originalAddCandlestickSeries({
             ...seriesOptions,
-            priceFormat: priceFormatForPair(selectedPair),
+            priceFormat: priceFormatForPair(currentPair()),
           });
 
-          function applyPrecision() {
-            const pair = currentPair();
-            applyChartAxis(chart, pair);
-            if (series && typeof series.applyOptions === 'function') {
-              try { series.applyOptions({ priceFormat: priceFormatForPair(pair) }); } catch (_) {}
-            }
-          }
-
+          const applyPrecision = () => applyChartFormatting(chart, series, currentPair());
           applyPrecision();
           setTimeout(applyPrecision, 0);
-          setTimeout(applyPrecision, 300);
+          setTimeout(applyPrecision, 250);
+          setTimeout(applyPrecision, 750);
 
           const pairSelect = document.getElementById('chartPair');
           if (pairSelect && !pairSelect.__agentFullPrecisionListener) {
-            pairSelect.addEventListener('change', () => setTimeout(applyPrecision, 0));
+            pairSelect.addEventListener('change', () => {
+              window.__agentCurrentChartPair = pairSelect.value;
+              setTimeout(applyPrecision, 0);
+              setTimeout(applyPrecision, 300);
+            });
             pairSelect.__agentFullPrecisionListener = true;
           }
 
@@ -125,6 +138,6 @@
 
   let attempts = 0;
   const timer = setInterval(() => {
-    if (patchLibrary() || attempts++ > 200) clearInterval(timer);
+    if (patchLibrary() || attempts++ > 240) clearInterval(timer);
   }, 25);
 })();
