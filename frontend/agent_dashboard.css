@@ -36,10 +36,16 @@
   max-width: none !important;
   margin: 0 !important;
   display: grid !important;
-  grid-template-columns: 160px 160px 160px 240px 205px minmax(270px, 1fr);
+  /* The last column used to be minmax(270px, 1fr) - flexible, growing to
+     fill any leftover viewport width. Since Open Trades / Confidence Audit
+     below split this same 6-column grid 3-and-3, having a flexible track
+     fall entirely on one side made that side balloon far wider than the
+     other on a wide screen. Fixed widths on every column keep both halves
+     genuinely equal regardless of viewport width. */
+  grid-template-columns: 160px 160px 160px 240px 205px 320px;
   grid-auto-rows: auto;
   gap: var(--dash-gap) !important;
-  justify-content: stretch !important;
+  justify-content: start !important;
   align-items: start !important;
 }
 
@@ -93,9 +99,13 @@
 #tab-dashboard .dashboard-snapshot-card,
 #tab-dashboard .dashboard-market-row > .agent-card:last-child,
 #tab-dashboard .dashboard-market-row > .agent-card:first-child {
-  min-height: 126px !important;
-  height: 126px !important;
-  overflow: hidden !important;
+  /* min-height (a floor) instead of a hard height+overflow:hidden (a cap) -
+     Trading Window and Upcoming News were both a few pixels taller than the
+     old 126px cap, so their last line was getting clipped off. Letting cards
+     grow to fit their own content means nothing is ever cut off again, no
+     matter how much a given card's content grows. */
+  min-height: 150px !important;
+  overflow: visible !important;
 }
 
 #tab-dashboard .card-eyebrow {
@@ -124,16 +134,22 @@
   display: none !important;
 }
 
-/* Second row: Open Trades and Confidence Audit fill the usable width. */
-#tab-dashboard .dashboard-open-trades-card {
-  grid-column: 1 / span 2;
+/* Second row: Open Trades and Confidence Audit are wrapped in their own
+   dedicated 50/50 sub-grid (.dashboard-row2 in the HTML) instead of sharing
+   row 1's column tracks - row 1 has one flexible last column so splitting
+   it 3-and-3 gave the two cards very different actual pixel widths on wide
+   screens. A genuinely independent 1fr/1fr grid keeps them equal at any
+   viewport width regardless of what row 1 needs. */
+#tab-dashboard .dashboard-row2 {
+  grid-column: 1 / -1;
   grid-row: 2;
-  min-height: 250px !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--dash-gap) !important;
 }
 
+#tab-dashboard .dashboard-open-trades-card,
 #tab-dashboard .dashboard-audit-card {
-  grid-column: 3 / span 4;
-  grid-row: 2;
   min-height: 250px !important;
   max-width: none !important;
 }
@@ -184,11 +200,10 @@
   max-width: 100% !important;
 }
 
-/* Top-right news card: compact but visible. */
+/* Top-right news card: compact but fully visible - no max-height/overflow
+   cap, so every event listed actually shows instead of being cut off. */
 #tab-dashboard #upcomingNewsPanel {
   min-height: 78px !important;
-  max-height: 88px !important;
-  overflow: hidden !important;
   font-size: 10px !important;
 }
 
@@ -271,7 +286,7 @@
 
 @media (max-width: 1420px) {
   #tab-dashboard {
-    grid-template-columns: 155px 155px 155px 235px 200px minmax(250px, 1fr) !important;
+    grid-template-columns: 155px 155px 155px 235px 200px 280px !important;
   }
 }
 
@@ -285,28 +300,15 @@
   #tab-dashboard .card-accent-orange,
   #tab-dashboard .dashboard-snapshot-card,
   #tab-dashboard .dashboard-market-row > .agent-card:last-child,
-  #tab-dashboard .dashboard-market-row > .agent-card:first-child,
-  #tab-dashboard .dashboard-open-trades-card,
-  #tab-dashboard .dashboard-audit-card {
+  #tab-dashboard .dashboard-market-row > .agent-card:first-child {
     grid-row: auto !important;
     grid-column: auto !important;
     height: auto !important;
     min-height: 108px !important;
   }
 
-  #tab-dashboard .dashboard-open-trades-card,
-  #tab-dashboard .dashboard-audit-card {
+  #tab-dashboard .dashboard-row2 {
     grid-column: 1 / -1 !important;
-  }
-}
-
-@media (max-width: 760px) {
-  #tab-dashboard {
     grid-template-columns: 1fr !important;
-  }
-
-  #tab-dashboard .dashboard-open-trades-card,
-  #tab-dashboard .dashboard-audit-card {
-    grid-column: auto !important;
   }
 }
