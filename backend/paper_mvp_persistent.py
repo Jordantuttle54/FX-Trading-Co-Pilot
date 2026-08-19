@@ -5,6 +5,7 @@ import math
 import os
 import random
 import threading
+import time
 import uuid
 import zlib
 from datetime import datetime, timezone
@@ -86,7 +87,11 @@ PAIR_STRATEGY: Dict[str, Dict[str, Any]] = {
 
 
 def get_pair_strategy(pair: str, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    cfg = {**PAIR_STRATEGY_DEFAULTS, **PAIR_STRATEGY.get(pair, {})}
+    # get_active_strategy_config() is defined further down (it needs the DB
+    # helpers), but Python resolves module-level names at call time rather
+    # than definition time, so this is safe to call from here.
+    active = get_active_strategy_config()
+    cfg = {**PAIR_STRATEGY_DEFAULTS, **PAIR_STRATEGY.get(pair, {}), **active.get(pair, {})}
     if overrides:
         cfg.update(overrides)
     return cfg
@@ -143,6 +148,10 @@ class OptimisationRequest(BaseModel):
     save_as_version: bool = False
     description: str = ""
 
+class StrategyVersionRequest(BaseModel):
+    description: str = ""
+    config: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
 class AutomationReadinessIn(BaseModel):
     backtested_trades: int = 0
     forward_trades: int = 0
@@ -155,6 +164,7 @@ JOURNAL: List[Dict[str, Any]] = []
 TRADES: List[Dict[str, Any]] = []
 SCAN_HISTORY: List[Dict[str, Any]] = []
 AUDIT: List[Dict[str, Any]] = []
+STRATEGY_VERSIONS: List[Dict[str, Any]] = []
 KILL_SWITCH = {"active": False, "reason": None}
 _DB_OK: Optional[bool] = None
 
@@ -290,6 +300,17 @@ def ensure_db() -> bool:
                         payload JSONB NOT NULL
                     )
                 """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS strategy_versions (
+                        id TEXT PRIMARY KEY,
+                        created_at TEXT NOT NULL,
+                        created_by TEXT,
+                        description TEXT,
+                        config JSONB NOT NULL,
+                        approved BOOLEAN NOT NULL DEFAULT FALSE,
+                        active BOOLEAN NOT NULL DEFAULT FALSE
+                    )
+                """)
         _DB_OK = True
     except Exception:
         _DB_OK = False
@@ -306,6 +327,112 @@ def normalise_payload(value: Any) -> Dict[str, Any]:
 
 def storage_mode() -> str:
     return "postgres" if ensure_db() else "memory"
+
+
+_ACTIVE_STRATEGY_CACHE: Optional[Dict[str, Dict[str, Any]]] = None
+_ACTIVE_STRATEGY_CACHE_AT: float = 0.0
+_ACTIVE_STRATEGY_CACHE_TTL = 30.0
+
+
+def get_active_strategy_config() -> Dict[str, Dict[str, Any]]:
+    """Returns {pair: {param: value, ...}} from whichever strategy version is
+    currently marked active, or {} if none has been activated yet (in which
+    case get_pair_strategy just falls back to the built-in defaults). Cached
+    briefly since this gets read on every single score_candidate call."""
+    global _ACTIVE_STRATEGY_CACHE, _ACTIVE_STRATEGY_CACHE_AT
+    now_ts = time.time()
+    if _ACTIVE_STRATEGY_CACHE is not None and (now_ts - _ACTIVE_STRATEGY_CACHE_AT) < _ACTIVE_STRATEGY_CACHE_TTL:
+        return _ACTIVE_STRATEGY_CACHE
+    cfg: Dict[str, Dict[str, Any]] = {}
+    if ensure_db():
+        try:
+            with db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT config FROM strategy_versions WHERE active = TRUE ORDER BY created_at DESC LIMIT 1")
+                    row = cur.fetchone()
+                    if row:
+                        cfg = normalise_payload(row[0])
+        except Exception:
+            cfg = {}
+    else:
+        active = next((v for v in STRATEGY_VERSIONS if v.get("active")), None)
+        cfg = active["config"] if active else {}
+    _ACTIVE_STRATEGY_CACHE = cfg
+    _ACTIVE_STRATEGY_CACHE_AT = now_ts
+    return cfg
+
+
+def _invalidate_active_strategy_cache():
+    global _ACTIVE_STRATEGY_CACHE, _ACTIVE_STRATEGY_CACHE_AT
+    _ACTIVE_STRATEGY_CACHE, _ACTIVE_STRATEGY_CACHE_AT = None, 0.0
+
+
+def save_strategy_version(user: str, description: str, config_patch: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Creates a new version by merging config_patch - a partial
+    {pair: {param: value}} dict, typically just one pair's calibrated
+    overrides - on top of the currently active version's full config, so
+    approving one pair's calibration never wipes out any other pair's
+    already-tuned settings."""
+    merged = {p: dict(v) for p, v in get_active_strategy_config().items()}
+    for pair, overrides in config_patch.items():
+        merged.setdefault(pair, {}).update(overrides)
+    item = {"id": str(uuid.uuid4()), "created_at": now(), "created_by": user, "description": description, "config": merged, "approved": False, "active": False}
+    if ensure_db():
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO strategy_versions (id,created_at,created_by,description,config,approved,active) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (item["id"], item["created_at"], user, description, Json(merged), False, False),
+                )
+    else:
+        STRATEGY_VERSIONS.insert(0, item)
+    return item
+
+
+def list_strategy_versions() -> List[Dict[str, Any]]:
+    if ensure_db():
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id,created_at,created_by,description,config,approved,active FROM strategy_versions ORDER BY created_at DESC")
+                rows = cur.fetchall()
+        return [{"id": r[0], "created_at": r[1], "created_by": r[2], "description": r[3], "config": normalise_payload(r[4]), "approved": r[5], "active": r[6]} for r in rows]
+    return list(STRATEGY_VERSIONS)
+
+
+def get_strategy_version(version_id: str) -> Dict[str, Any]:
+    for v in list_strategy_versions():
+        if v["id"] == version_id:
+            return v
+    raise HTTPException(status_code=404, detail="Strategy version not found.")
+
+
+def approve_strategy_version(version_id: str) -> Dict[str, Any]:
+    get_strategy_version(version_id)  # 404s if it doesn't exist
+    if ensure_db():
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE strategy_versions SET approved = TRUE WHERE id = %s", (version_id,))
+    else:
+        for item in STRATEGY_VERSIONS:
+            if item["id"] == version_id:
+                item["approved"] = True
+    return get_strategy_version(version_id)
+
+
+def activate_strategy_version(version_id: str) -> Dict[str, Any]:
+    v = get_strategy_version(version_id)
+    if not v.get("approved"):
+        raise HTTPException(status_code=422, detail="Strategy version must be approved before it can be activated.")
+    if ensure_db():
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE strategy_versions SET active = FALSE")
+                cur.execute("UPDATE strategy_versions SET active = TRUE WHERE id = %s", (version_id,))
+    else:
+        for item in STRATEGY_VERSIONS:
+            item["active"] = (item["id"] == version_id)
+    _invalidate_active_strategy_cache()
+    return get_strategy_version(version_id)
 
 
 def add_audit(user: str, event_type: str, decision: str, reason: str = "", pair: str = "", trade_id: str | None = None):
@@ -908,7 +1035,32 @@ async def agent_optimise(req: OptimisationRequest, user: str = Depends(current_u
 
 @app.get("/api/agent/strategy/versions")
 async def agent_versions(user: str = Depends(current_user)):
-    return []
+    return list_strategy_versions()
+
+@app.get("/api/agent/strategy/active")
+async def agent_strategy_active(user: str = Depends(current_user)):
+    return {"active_overrides": get_active_strategy_config(), "resolved": {p: get_pair_strategy(p) for p in WATCHLIST}}
+
+@app.post("/api/agent/strategy/versions")
+async def agent_create_strategy_version(req: StrategyVersionRequest, user: str = Depends(current_user)):
+    unknown = [p for p in req.config if p not in WATCHLIST]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown pair(s): {', '.join(unknown)}")
+    v = save_strategy_version(user, req.description, req.config)
+    add_audit(user, "strategy_version_created", v["id"], req.description or "Strategy version created.")
+    return v
+
+@app.post("/api/agent/strategy/versions/{version_id}/approve")
+async def agent_approve_strategy_version(version_id: str, user: str = Depends(current_user)):
+    v = approve_strategy_version(version_id)
+    add_audit(user, "strategy_version_approved", version_id, "Strategy version approved.")
+    return v
+
+@app.post("/api/agent/strategy/versions/{version_id}/activate")
+async def agent_activate_strategy_version(version_id: str, user: str = Depends(current_user)):
+    v = activate_strategy_version(version_id)
+    add_audit(user, "strategy_version_activated", version_id, "Strategy version activated - now live for scanning.")
+    return v
 
 @app.get("/api/agent/audit")
 async def agent_audit(user: str = Depends(current_user)):
