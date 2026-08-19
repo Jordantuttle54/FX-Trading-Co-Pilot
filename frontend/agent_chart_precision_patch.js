@@ -39,6 +39,14 @@
     };
   }
 
+  function hiddenSeriesPriceLabelOptions(pair) {
+    return {
+      priceFormat: priceFormatForPair(pair),
+      lastValueVisible: false,
+      priceLineVisible: false,
+    };
+  }
+
   function applyChartFormatting(chart, series, pair) {
     const resolvedPair = pair || currentPair();
     if (chart && typeof chart.applyOptions === 'function') {
@@ -56,7 +64,7 @@
       } catch (_) {}
     }
     if (series && typeof series.applyOptions === 'function') {
-      try { series.applyOptions({ priceFormat: priceFormatForPair(resolvedPair) }); } catch (_) {}
+      try { series.applyOptions(hiddenSeriesPriceLabelOptions(resolvedPair)); } catch (_) {}
     }
   }
 
@@ -90,7 +98,7 @@
         chart.addCandlestickSeries = function addCandlestickSeriesWithFullPriceLabels(seriesOptions = {}) {
           const series = originalAddCandlestickSeries({
             ...seriesOptions,
-            priceFormat: priceFormatForPair(currentPair()),
+            ...hiddenSeriesPriceLabelOptions(currentPair()),
           });
 
           const applyPrecision = () => applyChartFormatting(chart, series, currentPair());
