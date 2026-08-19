@@ -75,7 +75,13 @@ def _hit_reason(trade: Dict[str, Any], quote: Dict[str, Any]) -> Optional[str]:
 
 def _close_trade_at_market(user: str, trade: Dict[str, Any], quote: Dict[str, Any], reason: str) -> Dict[str, Any]:
     pair = _pair(trade.get("pair"))
-    close_price = _close_side_price(trade, quote)
+    # Fill at the level that was actually breached, not the live quote. The
+    # auto-close check only runs once a day (Vercel cron) or when the user
+    # has that pair's chart open, so price can gap well past the stop/target
+    # between checks - filling at the raw current price would then produce
+    # wildly inflated R-multiples (and £ P&L) instead of a realistic ~1R stop.
+    trigger_price = _sl(trade) if reason == "stop_loss_hit" else _target(trade)
+    close_price = trigger_price if trigger_price else _close_side_price(trade, quote)
     result_r = quick._result_r(trade, close_price)
     result_money = quick._result_money(trade, result_r)
     now = base.now()
