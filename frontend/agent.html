@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/agent_unified.css"/>
   <link rel="stylesheet" href="/static/agent_polish.css"/>
   <link rel="stylesheet" href="/static/agent_compact.css"/>
+  <link rel="stylesheet" href="/static/agent_dashboard.css"/>
 </head>
 <body>
 
@@ -33,7 +34,6 @@
     </div>
     <div class="agent-actions">
       <button class="btn-danger" id="killSwitchBtn" onclick="toggleKillSwitch()">&#9632; KILL SWITCH</button>
-      <button class="btn-primary" onclick="runScan()">&#9654; SCAN MARKETS</button>
     </div>
   </div>
 </header>
@@ -56,44 +56,44 @@
         <div class="card-sub">Live trading locked by default</div>
       </div>
       <div class="agent-card card-accent-green">
-        <div class="card-eyebrow">Daily Loss Used</div>
+        <div class="card-eyebrow">Daily W/L Ratio</div>
         <div class="card-big-value" id="dailyLossDisplay">0.00%</div>
         <div class="card-sub" id="dailyLossLimit">Limit: 1.5%</div>
       </div>
       <div class="agent-card card-accent-orange">
-        <div class="card-eyebrow">Weekly Loss Used</div>
+        <div class="card-eyebrow">Weekly W/L Ratio</div>
         <div class="card-big-value" id="weeklyLossDisplay">0.00%</div>
         <div class="card-sub" id="weeklyLossLimit">Limit: 4.0%</div>
       </div>
     </div>
 
-    <div class="agent-grid-2">
-      <div class="agent-card">
+    <div class="agent-grid-2 dashboard-status-row">
+      <div class="agent-card dashboard-trading-status-card">
         <h2>Trading Status</h2>
         <div id="tradingStatusPanel" class="status-panel">Loading...</div>
         <div class="card-actions">
           <button class="btn-secondary" onclick="loadStatus()">Refresh</button>
         </div>
       </div>
-      <div class="agent-card">
+      <div class="agent-card dashboard-open-trades-card">
         <h2>Open Trades</h2>
         <div id="openTradesPanel">Loading...</div>
       </div>
     </div>
 
-    <div class="agent-card">
+    <div class="agent-card dashboard-audit-card">
       <h2>Recent Decisions (Audit Log)</h2>
       <div id="auditLogPanel" class="audit-log">Loading...</div>
       <button class="btn-secondary" onclick="loadAuditLog()">Refresh Log</button>
     </div>
 
-    <div class="agent-grid-2">
+    <div class="agent-grid-2 dashboard-market-row">
       <div class="agent-card">
         <h2>Upcoming News Events</h2>
         <div id="upcomingNewsPanel">Loading...</div>
       </div>
       <div class="agent-card">
-        <h2>London Trading Window</h2>
+        <h2>Trading Window</h2>
         <div class="london-clock">
           <div class="clock-label">London Time</div>
           <div class="clock-display" id="londonClock">--:--</div>
