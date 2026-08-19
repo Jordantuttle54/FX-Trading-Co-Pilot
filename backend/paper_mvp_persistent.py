@@ -883,7 +883,12 @@ def manage_trades(user: str, prices: Optional[Dict[str, float]] = None) -> List[
             hit_stop, hit_target = price >= float(t["stop_loss"]), price <= float(t["take_profit"])
         if hit_stop or hit_target:
             reason = "stop" if hit_stop else "target"
-            c = close_trade(user, str(t["id"]), float(price), reason)
+            # Fill at the level that was breached, not the price that happened
+            # to be current when this check ran. Checks are periodic, so price
+            # can be well past the stop/target by now - using it directly would
+            # record a far bigger win or loss than the trade actually risked.
+            fill_price = float(t["stop_loss"]) if hit_stop else float(t["take_profit"])
+            c = close_trade(user, str(t["id"]), fill_price, reason)
             actions.append({"trade_id": c["id"], "pair": t["pair"], "action": f"close_{reason}", "reason": f"{t['pair']} hit {reason}.", "close_price": c.get("close_price"), "result_r": c.get("result_r"), "result_money": c.get("result_money")})
     return actions
 
