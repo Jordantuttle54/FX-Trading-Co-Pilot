@@ -392,6 +392,17 @@
     grid-template-columns: 1fr !important;
   }
 
+  /* The divider below already switches from a vertical to a horizontal rule
+     here, so the two cells are meant to stack - without this they stayed
+     side by side and got a stray rule through the middle. */
+  #tab-dashboard .dashboard-risk-card {
+    grid-template-columns: 1fr;
+  }
+
+  #tab-dashboard .dashboard-risk-cell {
+    padding: 0;
+  }
+
   #tab-dashboard .dashboard-risk-cell:first-child {
     border-right: 0;
     border-bottom: 1px solid var(--border);

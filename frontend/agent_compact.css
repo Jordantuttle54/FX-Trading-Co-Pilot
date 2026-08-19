@@ -11,8 +11,18 @@
 
 .agent-header-inner {
   min-height: 46px;
-  grid-template-columns: minmax(220px, 330px) minmax(300px, 1fr) auto !important;
   gap: 16px !important;
+}
+
+/* Three-across only fits on a wide screen. This carries !important to beat
+   the base header rule, so it must stay behind a media query - unscoped it
+   also beat the responsive rules that stack the header on small screens,
+   forcing a ~733px minimum header that dragged the whole page wider than a
+   phone viewport and left the header and tabs cut off. */
+@media (min-width: 1181px) {
+  .agent-header-inner {
+    grid-template-columns: minmax(220px, 330px) minmax(300px, 1fr) auto !important;
+  }
 }
 
 .agent-logo {
@@ -392,6 +402,17 @@ textarea {
 
   #agentLiveChart {
     height: 330px !important;
+  }
+
+  /* Full-width blurred layers are an expensive GPU/memory surface on mobile
+     Safari, which can get the page killed outright on a long scrolling view.
+     They sit on near-opaque backgrounds anyway, so dropping the blur costs
+     nothing visually on a phone. */
+  .agent-header,
+  .agent-nav,
+  #authOverlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 }
 
