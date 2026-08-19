@@ -25,17 +25,17 @@
   font-size: 10px !important;
 }
 
-/* Dashboard: compact cockpit grid. */
+/* Dashboard: compact cockpit grid with news in the top-right. */
 #tab-dashboard {
   --dash-gap: 12px;
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
   display: grid !important;
-  grid-template-columns: 170px 170px 170px 260px 230px;
+  grid-template-columns: 160px 160px 160px 240px 205px minmax(270px, 1fr);
   grid-auto-rows: auto;
   gap: var(--dash-gap) !important;
-  justify-content: start !important;
+  justify-content: stretch !important;
   align-items: start !important;
 }
 
@@ -52,7 +52,7 @@
   border-radius: 14px !important;
 }
 
-/* Top row: System / Daily / Weekly / Today's Snapshot / Trading Window. */
+/* Top row: System / Daily / Weekly / Today's Snapshot / Trading Window / News. */
 #tab-dashboard .card-accent-blue {
   grid-column: 1;
   grid-row: 1;
@@ -78,11 +78,17 @@
   grid-row: 1;
 }
 
+#tab-dashboard .dashboard-market-row > .agent-card:first-child {
+  grid-column: 6;
+  grid-row: 1;
+}
+
 #tab-dashboard .card-accent-blue,
 #tab-dashboard .card-accent-green,
 #tab-dashboard .card-accent-orange,
 #tab-dashboard .dashboard-snapshot-card,
-#tab-dashboard .dashboard-market-row > .agent-card:last-child {
+#tab-dashboard .dashboard-market-row > .agent-card:last-child,
+#tab-dashboard .dashboard-market-row > .agent-card:first-child {
   min-height: 126px !important;
   height: 126px !important;
   overflow: hidden !important;
@@ -114,17 +120,17 @@
   display: none !important;
 }
 
-/* Second row: Open Trades left, Audit Log right. */
+/* Second row: Open Trades and Confidence Audit fill the usable width. */
 #tab-dashboard .dashboard-open-trades-card {
   grid-column: 1 / span 2;
   grid-row: 2;
-  min-height: 252px !important;
+  min-height: 250px !important;
 }
 
 #tab-dashboard .dashboard-audit-card {
-  grid-column: 3 / span 3;
+  grid-column: 3 / span 4;
   grid-row: 2;
-  min-height: 252px !important;
+  min-height: 250px !important;
   max-width: none !important;
 }
 
@@ -140,43 +146,53 @@
 }
 
 #tab-dashboard #auditLogPanel {
-  max-height: 190px !important;
+  max-height: 188px !important;
   padding: 8px 10px !important;
   margin-bottom: 9px !important;
   border-radius: 11px !important;
+  overflow: auto !important;
 }
 
+/* Stop audit cells overlapping: every column can shrink and ellipsis cleanly. */
 #tab-dashboard .audit-row {
-  grid-template-columns: 128px 108px 70px 80px minmax(0,1fr) !important;
-  gap: 8px !important;
+  grid-template-columns: 132px minmax(130px, 170px) minmax(68px, 88px) minmax(62px, 78px) minmax(220px, 1fr) !important;
+  gap: 10px !important;
   padding: 6px 0 !important;
   font-size: 10px !important;
   align-items: center !important;
+  min-width: 0 !important;
 }
 
+#tab-dashboard .audit-row > span,
 #tab-dashboard .audit-time,
 #tab-dashboard .audit-event,
 #tab-dashboard .audit-pair,
-#tab-dashboard .audit-decision {
-  white-space: nowrap;
-}
-
+#tab-dashboard .audit-decision,
 #tab-dashboard .audit-reason {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
-/* Third row: keep news available but stop it dominating the dashboard. */
-#tab-dashboard .dashboard-market-row > .agent-card:first-child {
-  grid-column: 1 / span 3;
-  grid-row: 3;
-  min-height: 118px !important;
+#tab-dashboard .audit-event,
+#tab-dashboard .audit-pair {
+  max-width: 100% !important;
 }
 
+/* Top-right news card: compact but visible. */
 #tab-dashboard #upcomingNewsPanel {
-  min-height: 70px !important;
-  font-size: 11px !important;
+  min-height: 78px !important;
+  max-height: 88px !important;
+  overflow: hidden !important;
+  font-size: 10px !important;
+}
+
+#tab-dashboard #upcomingNewsPanel > div,
+#tab-dashboard #upcomingNewsPanel .news-row,
+#tab-dashboard #upcomingNewsPanel p {
+  margin: 0 !important;
+  padding: 4px 0 !important;
 }
 
 /* Today's Snapshot compact layout. */
@@ -221,7 +237,7 @@
 #tab-dashboard .dash-positive { color: #38bdf8 !important; }
 #tab-dashboard .dash-negative { color: #fb7185 !important; }
 
-/* Trading Window top-right compact card. */
+/* Trading Window compact card. */
 #tab-dashboard .london-clock {
   min-height: auto !important;
   padding: 4px 0 0 !important;
@@ -234,7 +250,7 @@
 }
 
 #tab-dashboard .clock-display {
-  font-size: clamp(24px, 2.3vw, 34px) !important;
+  font-size: clamp(23px, 2.2vw, 32px) !important;
   line-height: 1.05 !important;
   margin: 4px 0 !important;
 }
@@ -245,8 +261,14 @@
 }
 
 #tab-dashboard .window-info {
-  font-size: 9px !important;
+  font-size: 8px !important;
   margin-top: 4px !important;
+}
+
+@media (max-width: 1420px) {
+  #tab-dashboard {
+    grid-template-columns: 155px 155px 155px 235px 200px minmax(250px, 1fr) !important;
+  }
 }
 
 @media (max-width: 1280px) {
@@ -258,7 +280,10 @@
   #tab-dashboard .card-accent-green,
   #tab-dashboard .card-accent-orange,
   #tab-dashboard .dashboard-snapshot-card,
-  #tab-dashboard .dashboard-market-row > .agent-card:last-child {
+  #tab-dashboard .dashboard-market-row > .agent-card:last-child,
+  #tab-dashboard .dashboard-market-row > .agent-card:first-child,
+  #tab-dashboard .dashboard-open-trades-card,
+  #tab-dashboard .dashboard-audit-card {
     grid-row: auto !important;
     grid-column: auto !important;
     height: auto !important;
@@ -266,10 +291,8 @@
   }
 
   #tab-dashboard .dashboard-open-trades-card,
-  #tab-dashboard .dashboard-audit-card,
-  #tab-dashboard .dashboard-market-row > .agent-card:first-child {
+  #tab-dashboard .dashboard-audit-card {
     grid-column: 1 / -1 !important;
-    grid-row: auto !important;
   }
 }
 
@@ -279,8 +302,7 @@
   }
 
   #tab-dashboard .dashboard-open-trades-card,
-  #tab-dashboard .dashboard-audit-card,
-  #tab-dashboard .dashboard-market-row > .agent-card:first-child {
+  #tab-dashboard .dashboard-audit-card {
     grid-column: auto !important;
   }
 }
