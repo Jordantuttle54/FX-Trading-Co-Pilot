@@ -203,7 +203,6 @@
   }
 
   function injectEnhancementScripts() {
-    injectScript('/static/agent_chart_label_fix.js');
     injectScript('/static/agent_chart.js');
     injectScript('/static/agent_quick_trade.js');
     injectScript('/static/agent_trade_names.js');
