@@ -25,8 +25,12 @@
   font-size: 10px !important;
 }
 
-/* Dashboard: compact cockpit grid with news in the top-right. */
-#tab-dashboard {
+/* Dashboard: compact cockpit grid with news in the top-right.
+   Must be scoped to .active - #tab-dashboard alone has higher specificity
+   than the base .agent-section{display:none} rule and would override it
+   even when this tab isn't the active one, leaking the dashboard onto
+   every other tab. */
+#tab-dashboard.active {
   --dash-gap: 12px;
   width: 100% !important;
   max-width: none !important;
