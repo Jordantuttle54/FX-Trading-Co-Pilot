@@ -25,35 +25,67 @@
   font-size: 10px !important;
 }
 
-/* Dashboard: narrower cockpit layout so panels do not sprawl across the screen. */
+/* Dashboard: compact cockpit grid. */
 #tab-dashboard {
   --dash-gap: 12px;
-  width: min(1120px, 100%) !important;
-  margin-inline: auto !important;
-}
-
-#tab-dashboard .agent-grid-3,
-#tab-dashboard .agent-grid-2,
-#tab-dashboard .dashboard-overview-row,
-#tab-dashboard .dashboard-market-row {
-  gap: var(--dash-gap) !important;
-  margin-bottom: var(--dash-gap) !important;
-}
-
-#tab-dashboard .dashboard-kpi-row,
-#tab-dashboard > .agent-grid-3:first-child {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
   display: grid !important;
-  grid-template-columns: repeat(3, minmax(205px, 260px)) !important;
+  grid-template-columns: 170px 170px 170px 260px 230px;
+  grid-auto-rows: auto;
+  gap: var(--dash-gap) !important;
   justify-content: start !important;
-  align-items: stretch !important;
+  align-items: start !important;
 }
 
-#tab-dashboard .agent-grid-3 > .agent-card {
-  min-height: 76px !important;
-  padding: 10px 14px !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: center !important;
+/* Flatten the old row wrappers so the cards can be placed exactly where needed. */
+#tab-dashboard .dashboard-kpi-row,
+#tab-dashboard .dashboard-status-row,
+#tab-dashboard .dashboard-market-row {
+  display: contents !important;
+}
+
+#tab-dashboard .agent-card {
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+}
+
+/* Top row: System / Daily / Weekly / Today's Snapshot / Trading Window. */
+#tab-dashboard .card-accent-blue {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#tab-dashboard .card-accent-green {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+#tab-dashboard .card-accent-orange {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+#tab-dashboard .dashboard-snapshot-card {
+  grid-column: 4;
+  grid-row: 1;
+}
+
+#tab-dashboard .dashboard-market-row > .agent-card:last-child {
+  grid-column: 5;
+  grid-row: 1;
+}
+
+#tab-dashboard .card-accent-blue,
+#tab-dashboard .card-accent-green,
+#tab-dashboard .card-accent-orange,
+#tab-dashboard .dashboard-snapshot-card,
+#tab-dashboard .dashboard-market-row > .agent-card:last-child {
+  min-height: 126px !important;
+  height: 126px !important;
+  overflow: hidden !important;
 }
 
 #tab-dashboard .card-eyebrow {
@@ -63,38 +95,37 @@
 }
 
 #tab-dashboard .card-big-value {
-  font-size: clamp(23px, 1.9vw, 32px) !important;
+  font-size: clamp(22px, 1.8vw, 30px) !important;
   line-height: .95 !important;
 }
 
 #tab-dashboard .card-sub {
-  font-size: 10px !important;
+  font-size: 9px !important;
   margin-top: 5px !important;
 }
 
-#tab-dashboard .dashboard-status-row {
-  display: grid !important;
-  grid-template-columns: minmax(280px, 430px) minmax(300px, 430px) !important;
-  justify-content: start !important;
-  align-items: stretch !important;
+#tab-dashboard h2 {
+  font-size: 14px !important;
+  margin: 0 0 7px !important;
 }
 
+/* Remove the old Trading Status card completely. */
 #tab-dashboard .dashboard-trading-status-card {
   display: none !important;
 }
 
-#tab-dashboard .dashboard-open-trades-card,
-#tab-dashboard .dashboard-snapshot-card {
-  min-height: 104px !important;
-  padding: 12px 14px !important;
+/* Second row: Open Trades left, Audit Log right. */
+#tab-dashboard .dashboard-open-trades-card {
+  grid-column: 1 / span 2;
+  grid-row: 2;
+  min-height: 252px !important;
 }
 
-#tab-dashboard .dashboard-open-trades-card h2,
-#tab-dashboard .dashboard-snapshot-card h2,
-#tab-dashboard .dashboard-audit-card h2,
-#tab-dashboard .dashboard-market-row h2 {
-  font-size: 14px !important;
-  margin-bottom: 7px !important;
+#tab-dashboard .dashboard-audit-card {
+  grid-column: 3 / span 3;
+  grid-row: 2;
+  min-height: 252px !important;
+  max-width: none !important;
 }
 
 #tab-dashboard #openTradesPanel {
@@ -102,64 +133,24 @@
   font-size: 11px !important;
 }
 
-#tab-dashboard .dashboard-snapshot-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-#tab-dashboard .dash-mini-stat {
-  border: 1px solid rgba(148,163,184,.18);
-  background: rgba(15,23,42,.56);
-  border-radius: 10px;
-  padding: 8px 9px;
-  min-width: 0;
-}
-
-#tab-dashboard .dash-mini-stat span {
-  display: block;
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  margin-bottom: 3px;
-}
-
-#tab-dashboard .dash-mini-stat strong {
-  display: block;
-  color: var(--text);
-  font-size: 14px;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-#tab-dashboard .dash-mini-wide {
-  grid-column: 1 / -1;
-}
-
-#tab-dashboard .dash-positive { color: #38bdf8 !important; }
-#tab-dashboard .dash-negative { color: #fb7185 !important; }
-
-#tab-dashboard .dashboard-audit-card {
-  padding: 12px 14px !important;
-  max-width: 960px !important;
+#tab-dashboard #openTradesPanel .open-trade-card,
+#tab-dashboard #openTradesPanel > div {
+  padding: 10px !important;
+  border-radius: 11px !important;
 }
 
 #tab-dashboard #auditLogPanel {
-  max-height: 236px !important;
+  max-height: 190px !important;
   padding: 8px 10px !important;
   margin-bottom: 9px !important;
   border-radius: 11px !important;
 }
 
 #tab-dashboard .audit-row {
-  grid-template-columns: 132px 108px 70px 82px minmax(0,1fr) !important;
+  grid-template-columns: 128px 108px 70px 80px minmax(0,1fr) !important;
   gap: 8px !important;
   padding: 6px 0 !important;
-  font-size: 11px !important;
+  font-size: 10px !important;
   align-items: center !important;
 }
 
@@ -176,57 +167,120 @@
   white-space: nowrap;
 }
 
-#tab-dashboard .dashboard-market-row {
-  display: grid !important;
-  grid-template-columns: minmax(340px, 520px) minmax(240px, 300px) !important;
-  justify-content: start !important;
-}
-
-#tab-dashboard .dashboard-market-row > .agent-card {
+/* Third row: keep news available but stop it dominating the dashboard. */
+#tab-dashboard .dashboard-market-row > .agent-card:first-child {
+  grid-column: 1 / span 3;
+  grid-row: 3;
   min-height: 118px !important;
-  padding: 12px 14px !important;
 }
 
-#tab-dashboard #upcomingNewsPanel,
-#tab-dashboard .london-clock {
-  min-height: 76px !important;
+#tab-dashboard #upcomingNewsPanel {
+  min-height: 70px !important;
+  font-size: 11px !important;
 }
 
+/* Today's Snapshot compact layout. */
+#tab-dashboard .dashboard-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+#tab-dashboard .dash-mini-stat {
+  border: 1px solid rgba(148,163,184,.18);
+  background: rgba(15,23,42,.56);
+  border-radius: 9px;
+  padding: 6px 7px;
+  min-width: 0;
+}
+
+#tab-dashboard .dash-mini-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 2px;
+}
+
+#tab-dashboard .dash-mini-stat strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#tab-dashboard .dash-mini-wide {
+  grid-column: 1 / -1;
+}
+
+#tab-dashboard .dash-positive { color: #38bdf8 !important; }
+#tab-dashboard .dash-negative { color: #fb7185 !important; }
+
+/* Trading Window top-right compact card. */
 #tab-dashboard .london-clock {
-  padding: 7px 0 !important;
+  min-height: auto !important;
+  padding: 4px 0 0 !important;
+  text-align: center !important;
+}
+
+#tab-dashboard .clock-label {
+  font-size: 8px !important;
+  letter-spacing: .08em !important;
 }
 
 #tab-dashboard .clock-display {
-  font-size: clamp(26px, 2.8vw, 36px) !important;
+  font-size: clamp(24px, 2.3vw, 34px) !important;
+  line-height: 1.05 !important;
+  margin: 4px 0 !important;
 }
 
-#tab-dashboard .window-info,
-#tab-dashboard .clock-label {
+#tab-dashboard #windowStatus {
   font-size: 10px !important;
+  font-weight: 900 !important;
 }
 
-@media (max-width: 1180px) {
-  .agent-actions #authUserBadge {
-    margin-left: 0 !important;
+#tab-dashboard .window-info {
+  font-size: 9px !important;
+  margin-top: 4px !important;
+}
+
+@media (max-width: 1280px) {
+  #tab-dashboard {
+    grid-template-columns: repeat(3, minmax(180px, 1fr)) !important;
   }
 
-  #tab-dashboard .dashboard-kpi-row,
-  #tab-dashboard > .agent-grid-3:first-child,
-  #tab-dashboard .dashboard-status-row,
-  #tab-dashboard .dashboard-market-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  #tab-dashboard .card-accent-blue,
+  #tab-dashboard .card-accent-green,
+  #tab-dashboard .card-accent-orange,
+  #tab-dashboard .dashboard-snapshot-card,
+  #tab-dashboard .dashboard-market-row > .agent-card:last-child {
+    grid-row: auto !important;
+    grid-column: auto !important;
+    height: auto !important;
+    min-height: 108px !important;
   }
 
-  #tab-dashboard .dashboard-audit-card {
-    max-width: none !important;
+  #tab-dashboard .dashboard-open-trades-card,
+  #tab-dashboard .dashboard-audit-card,
+  #tab-dashboard .dashboard-market-row > .agent-card:first-child {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
   }
 }
 
 @media (max-width: 760px) {
-  #tab-dashboard .dashboard-kpi-row,
-  #tab-dashboard > .agent-grid-3:first-child,
-  #tab-dashboard .dashboard-status-row,
-  #tab-dashboard .dashboard-market-row {
+  #tab-dashboard {
     grid-template-columns: 1fr !important;
+  }
+
+  #tab-dashboard .dashboard-open-trades-card,
+  #tab-dashboard .dashboard-audit-card,
+  #tab-dashboard .dashboard-market-row > .agent-card:first-child {
+    grid-column: auto !important;
   }
 }
