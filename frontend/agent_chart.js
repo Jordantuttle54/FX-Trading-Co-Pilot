@@ -35,7 +35,7 @@
   function qs(id) { return document.getElementById(id); }
 
   function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+    return String(value ?? '').replace(/[&<>'\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
   }
 
   function num(value, fallback = null) {
@@ -98,7 +98,11 @@
       });
     }
     if (candleSeries && typeof candleSeries.applyOptions === 'function') {
-      candleSeries.applyOptions({ priceFormat: chartPriceFormat(resolvedPair) });
+      candleSeries.applyOptions({
+        priceFormat: chartPriceFormat(resolvedPair),
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
     }
   }
 
@@ -296,6 +300,8 @@
       wickUpColor: '#16a34a',
       wickDownColor: '#dc2626',
       priceFormat: chartPriceFormat(selectedPair),
+      lastValueVisible: false,
+      priceLineVisible: false,
     });
     applyChartPriceFormatting(selectedPair);
     window.addEventListener('resize', () => {
