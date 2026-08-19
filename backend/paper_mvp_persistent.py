@@ -60,6 +60,37 @@ ENFORCE_WINDOW = os.getenv("PAPER_TRADING_ENFORCE_WINDOW", "false").lower() == "
 MIN_TREND_STRENGTH = float(os.getenv("MIN_TREND_STRENGTH_ATR", "0.3"))
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
+# Every threshold score_candidate uses to size and gate a trade, in one place
+# per pair. Different instruments genuinely behave differently (gold's ATR
+# and typical trend moves are nothing like GBP/USD's), so a single global
+# number was never going to fit all of them - see backend/strategy_calibration.py
+# for how these get tuned against each pair's own real historical data instead
+# of guessed or copied from a synthetic test.
+PAIR_STRATEGY_DEFAULTS: Dict[str, Any] = {
+    "min_trend_strength": MIN_TREND_STRENGTH,  # SMA20/50 separation required, in ATR multiples
+    "rr": 2.2,                                 # reward:risk target
+    "stop_atr_mult": 1.2,                      # stop distance = ATR * this, floored by min_stop_pips
+    "min_stop_pips": 12.0,
+    "fallback_stop_pips": 20.0,                # used only when ATR isn't available yet
+    "rsi_overbought": 70.0,
+    "rsi_oversold": 30.0,
+    "rsi_penalty": 15,                         # confidence points deducted for an RSI-extreme entry
+    "slope_penalty": 10,                       # confidence points deducted when the SMA20 isn't sloping with the trend
+}
+# Per-pair overrides layered on top of the defaults above. Starts with just
+# the XAU/USD wider-stop override that already existed as a hardcoded
+# if-statement; empty otherwise until a pair has actually been calibrated.
+PAIR_STRATEGY: Dict[str, Dict[str, Any]] = {
+    "XAU/USD": {"min_stop_pips": 15.0, "fallback_stop_pips": 25.0},
+}
+
+
+def get_pair_strategy(pair: str, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    cfg = {**PAIR_STRATEGY_DEFAULTS, **PAIR_STRATEGY.get(pair, {})}
+    if overrides:
+        cfg.update(overrides)
+    return cfg
+
 app = FastAPI(title="AI FX Persistent Paper Trading MVP", version=APP_VERSION)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 if FRONTEND.exists():
@@ -557,11 +588,12 @@ def analyse(pair: str, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[s
     }
 
 
-def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    strat = get_pair_strategy(pair, strategy_overrides)
     a = analyse(pair, candles)
     ind = a.get("indicators", {})
     direction = "buy" if a["bias"] == "Bullish" else "sell" if a["bias"] == "Bearish" else "none"
-    rr = 2.2 if direction != "none" else 0.0
+    rr = strat["rr"] if direction != "none" else 0.0
     conf = 88 if direction != "none" else 0
     if a.get("volatility") == "Medium":
         conf += 3
@@ -570,15 +602,15 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
 
     rsi_val = ind.get("rsi")
     confidence_notes = []
-    if direction == "buy" and rsi_val is not None and rsi_val > 70:
-        conf -= 15
+    if direction == "buy" and rsi_val is not None and rsi_val > strat["rsi_overbought"]:
+        conf -= strat["rsi_penalty"]
         confidence_notes.append(f"RSI {rsi_val:.0f} is overbought - weaker odds buying here.")
-    elif direction == "sell" and rsi_val is not None and rsi_val < 30:
-        conf -= 15
+    elif direction == "sell" and rsi_val is not None and rsi_val < strat["rsi_oversold"]:
+        conf -= strat["rsi_penalty"]
         confidence_notes.append(f"RSI {rsi_val:.0f} is oversold - weaker odds selling here.")
 
     if direction != "none" and not ind.get("slope_aligned", True):
-        conf -= 10
+        conf -= strat["slope_penalty"]
         confidence_notes.append("The 20-period average isn't actually sloping in this direction yet - trend may be flattening.")
 
     conf = max(0, min(96, conf))
@@ -588,9 +620,9 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     # of a fixed pip count for every pair regardless of how much it actually
     # moves, with a sane floor so quiet pairs don't get an unrealistically
     # tight stop.
-    min_stop_pips = 15.0 if pair == "XAU/USD" else 12.0
+    min_stop_pips = strat["min_stop_pips"]
     atr_pips = ind.get("atr_pips")
-    stop_pips = max(min_stop_pips, round(atr_pips * 1.2, 1)) if atr_pips else (25.0 if pair == "XAU/USD" else 20.0)
+    stop_pips = max(min_stop_pips, round(atr_pips * strat["stop_atr_mult"], 1)) if atr_pips else strat["fallback_stop_pips"]
     if direction == "buy":
         sl, tp = entry - stop_pips * pip, entry + stop_pips * rr * pip
     elif direction == "sell":
@@ -618,8 +650,8 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     if direction == "none":
         rejects.append("No clean directional bias.")
     trend_strength = ind.get("sma_separation_atr")
-    if direction != "none" and trend_strength is not None and trend_strength < MIN_TREND_STRENGTH:
-        rejects.append(f"Trend too weak ({trend_strength}x ATR separation, need {MIN_TREND_STRENGTH}x) - the averages are still stacked close together, more likely chop than a real trend.")
+    if direction != "none" and trend_strength is not None and trend_strength < strat["min_trend_strength"]:
+        rejects.append(f"Trend too weak ({trend_strength}x ATR separation, need {strat['min_trend_strength']}x) - the averages are still stacked close together, more likely chop than a real trend.")
     if ENFORCE_WINDOW and not london_window():
         rejects.append("Outside the configured London paper-trading window.")
     if direction != "none" and conf < MIN_CONF:
@@ -627,7 +659,7 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     if KILL_SWITCH["active"]:
         rejects.append(KILL_SWITCH["reason"] or "Kill switch active.")
     status = "trade_candidate" if not rejects else ("no_setup" if direction == "none" else "rejected")
-    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback"}
+    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback", "strategy_config": strat}
 
 
 def calc_r(t: Dict[str, Any], close_price: float) -> float:
