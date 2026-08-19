@@ -75,10 +75,6 @@
           <button class="btn-secondary" onclick="loadStatus()">Refresh</button>
         </div>
       </div>
-      <div class="agent-card dashboard-open-trades-card">
-        <h2>Open Trades</h2>
-        <div id="openTradesPanel">Loading...</div>
-      </div>
       <div class="agent-card dashboard-snapshot-card">
         <h2>Today's Snapshot</h2>
         <div id="dashboardTodaySnapshot" class="dashboard-snapshot-grid">
@@ -87,10 +83,16 @@
       </div>
     </div>
 
-    <div class="agent-card dashboard-audit-card">
-      <h2>Confidence Audit Log</h2>
-      <div id="auditLogPanel" class="audit-log">Loading...</div>
-      <button class="btn-secondary" onclick="loadAuditLog()">Refresh Log</button>
+    <div class="dashboard-row2">
+      <div class="agent-card dashboard-open-trades-card">
+        <h2>Open Trades</h2>
+        <div id="openTradesPanel">Loading...</div>
+      </div>
+      <div class="agent-card dashboard-audit-card">
+        <h2>Confidence Audit Log</h2>
+        <div id="auditLogPanel" class="audit-log">Loading...</div>
+        <button class="btn-secondary" onclick="loadAuditLog()">Refresh Log</button>
+      </div>
     </div>
 
     <div class="agent-grid-2 dashboard-market-row">
