@@ -50,14 +50,14 @@ def _historical_candles(pair: str, count: int) -> List[Dict[str, Any]]:
     return analysis.synthetic_candles(pair, count)
 
 
-def _simulate_pair_trades(pair: str, candles: List[Dict[str, Any]], lookback: int) -> List[Dict[str, Any]]:
+def _simulate_pair_trades(pair: str, candles: List[Dict[str, Any]], lookback: int, strategy_overrides: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     trades: List[Dict[str, Any]] = []
     n = len(candles)
     i = lookback
     while i < n:
         window = candles[max(0, i - lookback + 1):i + 1]
         try:
-            candidate = analysis.score_candidate(pair, analysis.START_BALANCE, None, candles=window)
+            candidate = analysis.score_candidate(pair, analysis.START_BALANCE, None, candles=window, strategy_overrides=strategy_overrides)
         except Exception:
             i += 1
             continue
