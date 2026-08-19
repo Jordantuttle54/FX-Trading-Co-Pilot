@@ -44,15 +44,20 @@ ENFORCE_WINDOW = os.getenv("PAPER_TRADING_ENFORCE_WINDOW", "false").lower() == "
 # than the averages sitting on top of each other during chop. Backtesting
 # showed the strategy fired almost as often in a choppy/ranging market as
 # in a genuinely trending one because this had no minimum - see score_candidate.
-# Tuned against synthetic ranging vs. trending regimes: this level clearly
-# improves trending-market quality (higher win rate and profit factor) and
-# cuts trade volume/total losses in ranging markets, but it does NOT fully
-# fix ranging-market performance on its own - SMA separation isn't strongly
-# predictive of continuation once a market is genuinely mean-reverting, so
-# some trades taken during real chop will still lose even past this gate.
-# A proper regime filter (distinguishing "not trending at all" from "trend
-# forming") would be the next step if this isn't enough on its own.
-MIN_TREND_STRENGTH = float(os.getenv("MIN_TREND_STRENGTH_ATR", "2.0"))
+#
+# The original 2.0 value was tuned only against synthetic ranging/trending
+# regimes and did not transfer to real markets: live OANDA data on
+# 2026-08-19 showed every watchlist pair sitting between 0.43 and 0.88,
+# so a 2.0 floor rejected the entire watchlist regardless of conditions -
+# confirmed live (100% of scans rejected) and in a real backtest (trade
+# count collapsed and per-trade quality got *worse*, not better). Real SMA
+# separation runs much smaller-scale than the synthetic model assumed, and
+# RSI can hit an extreme early in a move well before the slower SMA50 has
+# caught up - so requiring both "not RSI-extreme" and "wide SMA gap" at once
+# rejects the early phase of most real trends too. Lowered to only filter
+# genuinely flat/dead-zero separation until this can be recalibrated against
+# real historical backtests rather than synthetic ones.
+MIN_TREND_STRENGTH = float(os.getenv("MIN_TREND_STRENGTH_ATR", "0.3"))
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 app = FastAPI(title="AI FX Persistent Paper Trading MVP", version=APP_VERSION)
