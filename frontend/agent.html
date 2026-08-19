@@ -338,6 +338,20 @@
       <div id="walletTransactionsPanel" style="margin-top:16px"></div>
     </div>
     <div class="agent-card">
+      <h2>Trade History Repair</h2>
+      <p class="card-sub">Trades that hit their stop-loss or take-profit used to be recorded at the market price at the moment the check ran, not at the level actually hit &mdash; which overstated some wins and losses. Preview shows exactly what would change; nothing is saved until you apply it.</p>
+      <div class="wallet-actions">
+        <div class="wallet-action-group">
+          <button class="btn-secondary" onclick="previewTradeRepair()">Preview Changes</button>
+        </div>
+        <div class="wallet-action-group">
+          <button class="btn-safe" id="applyRepairBtn" onclick="applyTradeRepair()" disabled>Apply Repair</button>
+        </div>
+      </div>
+      <div id="tradeRepairResult" style="margin-top:12px"></div>
+    </div>
+
+    <div class="agent-card">
       <h2>Paper Mode Notice</h2>
       <div class="safety-notice">
         <strong>&#9888; LIVE TRADING IS LOCKED</strong><br/>
@@ -362,5 +376,6 @@
 <script src="/static/agent_phase1.js"></script>
 <script src="/static/agent_open_trades_fix.js"></script>
 <script src="/static/agent_journal_live.js"></script>
+<script src="/static/agent_trade_repair.js"></script>
 </body>
 </html>
