@@ -39,6 +39,20 @@ WEEKLY_LIMIT = float(os.getenv("MAX_WEEKLY_LOSS_PCT", "4.0"))
 MIN_RR = float(os.getenv("MIN_RISK_REWARD", "2.0"))
 MIN_CONF = int(os.getenv("MIN_CONFIDENCE_SCORE", "85"))
 ENFORCE_WINDOW = os.getenv("PAPER_TRADING_ENFORCE_WINDOW", "false").lower() == "true"
+# How far apart the 20 and 50 period averages must be, relative to ATR,
+# before a "price above/below both" stack counts as a real trend rather
+# than the averages sitting on top of each other during chop. Backtesting
+# showed the strategy fired almost as often in a choppy/ranging market as
+# in a genuinely trending one because this had no minimum - see score_candidate.
+# Tuned against synthetic ranging vs. trending regimes: this level clearly
+# improves trending-market quality (higher win rate and profit factor) and
+# cuts trade volume/total losses in ranging markets, but it does NOT fully
+# fix ranging-market performance on its own - SMA separation isn't strongly
+# predictive of continuation once a market is genuinely mean-reverting, so
+# some trades taken during real chop will still lose even past this gate.
+# A proper regime filter (distinguishing "not trending at all" from "trend
+# forming") would be the next step if this isn't enough on its own.
+MIN_TREND_STRENGTH = float(os.getenv("MIN_TREND_STRENGTH_ATR", "2.0"))
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 app = FastAPI(title="AI FX Persistent Paper Trading MVP", version=APP_VERSION)
@@ -511,6 +525,10 @@ def analyse(pair: str, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[s
     rsi_val = rsi(closes)
     atr_val = atr(highs, lows, closes)
     atr_pips = round(atr_val / pip, 1) if atr_val else None
+    # How far apart the two averages are, in ATR terms - a small gap means
+    # they're stacked on top of each other (chop), a large gap means price
+    # has genuinely moved away in one direction (a real trend).
+    sma_separation_atr = round(abs(s20 - s50) / atr_val, 2) if atr_val else None
     if price > s20 > s50:
         bias, trend, note = "Bullish", "Price is above the 20 and 50 period moving averages.", "Buy setups may be higher quality after pullbacks."
     elif price < s20 < s50:
@@ -529,6 +547,7 @@ def analyse(pair: str, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[s
             "recent_high": rprice(pair, recent_high), "recent_low": rprice(pair, recent_low),
             "avg_range_pips": round(avg_pips, 1), "rsi": round(rsi_val, 1) if rsi_val is not None else None,
             "atr_pips": atr_pips, "slope_aligned": slope_aligned,
+            "sma_separation_atr": sma_separation_atr,
         },
     }
 
@@ -593,6 +612,9 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     rejects = []
     if direction == "none":
         rejects.append("No clean directional bias.")
+    trend_strength = ind.get("sma_separation_atr")
+    if direction != "none" and trend_strength is not None and trend_strength < MIN_TREND_STRENGTH:
+        rejects.append(f"Trend too weak ({trend_strength}x ATR separation, need {MIN_TREND_STRENGTH}x) - the averages are still stacked close together, more likely chop than a real trend.")
     if ENFORCE_WINDOW and not london_window():
         rejects.append("Outside the configured London paper-trading window.")
     if direction != "none" and conf < MIN_CONF:
