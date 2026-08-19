@@ -188,3 +188,19 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();
+
+(function () {
+  if (window.__agentScannerPolishLoaderInstalled) return;
+  window.__agentScannerPolishLoaderInstalled = true;
+
+  function loadScannerPolish() {
+    if (document.querySelector('script[src="/static/agent_scanner_polish.js"]')) return;
+    const script = document.createElement('script');
+    script.src = '/static/agent_scanner_polish.js';
+    script.defer = true;
+    document.body.appendChild(script);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadScannerPolish);
+  else loadScannerPolish();
+})();
