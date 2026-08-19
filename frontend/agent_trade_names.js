@@ -63,7 +63,7 @@
         const name = displayName(t);
         const tech = shortId(t);
         return `
-          <div class="open-trade-card" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;">
+          <div class="open-trade-card">
             <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
               <div>
                 <strong class="trade-friendly-name">${escapeHtml(name)}</strong>
@@ -71,11 +71,25 @@
               </div>
               <span class="candidate-dir dir-${escapeHtml(direction)}">${escapeHtml(directionLabel)}</span>
             </div>
-            <div class="small muted" style="margin-top:8px;line-height:1.7;">
-              Pair: ${escapeHtml(t.pair || '')} &nbsp;|&nbsp; Entry: ${escapeHtml(price || '?')} &nbsp;|&nbsp; SL: ${escapeHtml(t.stop_loss || '?')} &nbsp;|&nbsp; TP: ${escapeHtml(t.take_profit || t.target || '?')}<br>
-              Setup: ${escapeHtml(t.setup_label || t.setup_type || '')} &nbsp;|&nbsp; Confidence: ${escapeHtml(t.confidence || 0)}%<br>
-              Opened: ${escapeHtml(t.filled_at || t.created_at || '')}
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:12px;margin-top:12px;background:var(--panel-3);border-radius:9px;">
+              <div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:800;">Entry</div>
+                <div style="font-size:13px;font-weight:800;margin-top:3px;">${escapeHtml(price || '?')}</div>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:800;">Stop Loss</div>
+                <div style="font-size:13px;font-weight:800;margin-top:3px;color:var(--red);">${escapeHtml(t.stop_loss || '?')}</div>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:800;">Take Profit</div>
+                <div style="font-size:13px;font-weight:800;margin-top:3px;color:var(--green);">${escapeHtml(t.take_profit || t.target || '?')}</div>
+              </div>
             </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+              <div class="small muted">${escapeHtml(t.setup_label || t.setup_type || '')}</div>
+              <div class="small muted">Confidence <strong style="color:var(--accent);">${escapeHtml(t.confidence || 0)}%</strong></div>
+            </div>
+            <div class="trade-technical-id" style="margin-top:8px;">Opened: ${escapeHtml(t.filled_at || t.created_at || '')}</div>
             ${containerId === 'openTradesDetail' ? `
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;">
                 <input type="number" step="0.00001" value="${escapeHtml(price || 0)}" id="close_${escapeHtml(id)}" style="width:130px" title="Manual close price">
