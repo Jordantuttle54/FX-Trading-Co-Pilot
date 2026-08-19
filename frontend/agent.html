@@ -185,6 +185,37 @@
 
   <section id="tab-performance" class="agent-section">
     <div class="agent-card">
+      <h2>Strategy Backtest</h2>
+      <p class="card-sub">Walk-forward test the current strategy logic against historical price data before trusting it with real trades. Uses real OANDA H1 history when configured, with a clearly-labelled synthetic fallback otherwise.</p>
+      <div id="backtestPairPicker" class="backtest-pairs">Loading pairs...</div>
+      <div class="wallet-actions">
+        <div class="wallet-action-group">
+          <label>Candles per pair
+            <select id="backtestCandleCount">
+              <option value="500">500 (~3 weeks H1)</option>
+              <option value="1000" selected>1000 (~6 weeks H1)</option>
+              <option value="2500">2500 (~14 weeks H1)</option>
+              <option value="5000">5000 (~28 weeks H1, max)</option>
+            </select>
+          </label>
+        </div>
+        <div class="wallet-action-group">
+          <label>Lookback window
+            <select id="backtestLookback">
+              <option value="60">60 candles</option>
+              <option value="120" selected>120 candles</option>
+              <option value="200">200 candles</option>
+            </select>
+          </label>
+        </div>
+        <div class="wallet-action-group">
+          <button class="btn-primary" onclick="runBacktest()">&#9654; Run Backtest</button>
+        </div>
+      </div>
+      <div id="backtestPanel" style="margin-top:16px">Pick pairs and run a backtest to see how the current strategy would have performed historically.</div>
+    </div>
+
+    <div class="agent-card">
       <h2>Performance Report</h2>
       <button class="btn-primary" onclick="loadPerformance()">&#9654; Generate Report</button>
       <div id="performancePanel" style="margin-top:16px">Click to generate the performance report.</div>

@@ -202,6 +202,12 @@ main.agent-main, .agent-main {
 .proposal-type { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: 900; }
 .proposal-high { border-left: 4px solid var(--red); }
 
+.backtest-pairs { display: flex; flex-wrap: wrap; gap: 14px; margin: 12px 0; }
+.backtest-pair-check { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.backtest-provider-note { font-size: 12px; margin-bottom: 10px; }
+.backtest-provider-note.synthetic { color: var(--orange); }
+.backtest-provider-note.live { color: var(--muted); }
+
 #tab-settings { padding-top: 8px; }
 #tab-settings .agent-grid-2 { grid-template-columns: repeat(2,minmax(360px,1fr)); }
 #tab-settings .agent-card { margin-bottom: 24px; }
