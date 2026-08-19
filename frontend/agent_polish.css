@@ -400,6 +400,10 @@ label {
   border-radius: 14px !important;
 }
 
+.open-trade-card + .open-trade-card {
+  margin-top: 10px !important;
+}
+
 .chart-frame {
   border-radius: 16px !important;
   border-color: rgba(148,163,184,.22) !important;

@@ -59,19 +59,20 @@
     return [...byPair.entries()].sort((a, b) => b[1] - a[1])[0][0];
   }
 
-  function renderSnapshot({ todayTrades, todayClosed, openTrades }) {
+  function renderSnapshot({ todayTrades, todayClosed }) {
     const el = qs('dashboardTodaySnapshot');
     if (!el) return;
     const wins = todayClosed.filter(t => pnlValue(t) > 0).length;
     const losses = todayClosed.filter(t => pnlValue(t) < 0).length;
     const pnl = todayClosed.reduce((sum, t) => sum + pnlValue(t), 0);
-    const openCount = openTrades.length;
     el.innerHTML = `
-      <div class="dash-mini-stat"><span>Today trades</span><strong>${todayTrades.length}</strong></div>
-      <div class="dash-mini-stat"><span>Closed W/L</span><strong>${wins} / ${losses}</strong></div>
-      <div class="dash-mini-stat"><span>Today P&L</span><strong class="${pnl >= 0 ? 'dash-positive' : 'dash-negative'}">${money(pnl)}</strong></div>
-      <div class="dash-mini-stat"><span>Open now</span><strong>${openCount}</strong></div>
-      <div class="dash-mini-stat dash-mini-wide"><span>Best pair today</span><strong>${bestPair(todayClosed)}</strong></div>
+      <div class="dash-pnl-label">Today's P&amp;L</div>
+      <div class="dash-pnl-value ${pnl >= 0 ? 'dash-positive' : 'dash-negative'}">${money(pnl)}</div>
+      <div class="dash-pnl-stats">
+        <div class="dash-mini-stat"><span>Trades today</span><strong>${todayTrades.length}</strong></div>
+        <div class="dash-mini-stat"><span>Closed W/L</span><strong>${wins} / ${losses}</strong></div>
+        <div class="dash-mini-stat"><span>Best pair</span><strong>${bestPair(todayClosed)}</strong></div>
+      </div>
     `;
   }
 

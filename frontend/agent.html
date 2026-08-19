@@ -23,6 +23,8 @@
       </div>
     </div>
     <div class="agent-status-strip" id="agentStatusStrip">
+      <span class="badge-neutral" id="paperModeBadge">PAPER</span>
+      <span class="status-sep">|</span>
       <span class="status-dot dot-loading" id="statusDot"></span>
       <span id="statusLabel">Loading...</span>
       <span class="status-sep">|</span>
@@ -49,25 +51,7 @@
 
 <main class="agent-main">
   <section id="tab-dashboard" class="agent-section active">
-    <div class="agent-grid-3 dashboard-kpi-row">
-      <div class="agent-card card-accent-blue">
-        <div class="card-eyebrow">System Mode</div>
-        <div class="card-big-value" id="systemMode">PAPER</div>
-        <div class="card-sub">Live trading locked by default</div>
-      </div>
-      <div class="agent-card card-accent-green">
-        <div class="card-eyebrow">Daily W/L Ratio</div>
-        <div class="card-big-value" id="dailyLossDisplay">0.00%</div>
-        <div class="card-sub" id="dailyLossLimit">Limit: 1.5%</div>
-      </div>
-      <div class="agent-card card-accent-orange">
-        <div class="card-eyebrow">Weekly W/L Ratio</div>
-        <div class="card-big-value" id="weeklyLossDisplay">0.00%</div>
-        <div class="card-sub" id="weeklyLossLimit">Limit: 4.0%</div>
-      </div>
-    </div>
-
-    <div class="agent-grid-2 dashboard-status-row">
+    <div class="dashboard-status-row">
       <div class="agent-card dashboard-trading-status-card">
         <h2>Trading Status</h2>
         <div id="tradingStatusPanel" class="status-panel">Loading...</div>
@@ -75,10 +59,24 @@
           <button class="btn-secondary" onclick="loadStatus()">Refresh</button>
         </div>
       </div>
-      <div class="agent-card dashboard-snapshot-card">
-        <h2>Today's Snapshot</h2>
+    </div>
+
+    <div class="dashboard-hero-row">
+      <div class="agent-card dashboard-pnl-card">
         <div id="dashboardTodaySnapshot" class="dashboard-snapshot-grid">
           <div class="muted small">Loading today...</div>
+        </div>
+      </div>
+      <div class="agent-card dashboard-risk-card">
+        <div class="dashboard-risk-cell">
+          <div class="card-eyebrow">Daily W/L Ratio</div>
+          <div class="card-big-value" id="dailyLossDisplay">0.00%</div>
+          <div class="card-sub" id="dailyLossLimit">Limit: 1.5%</div>
+        </div>
+        <div class="dashboard-risk-cell">
+          <div class="card-eyebrow">Weekly W/L Ratio</div>
+          <div class="card-big-value" id="weeklyLossDisplay">0.00%</div>
+          <div class="card-sub" id="weeklyLossLimit">Limit: 4.0%</div>
         </div>
       </div>
     </div>
@@ -95,19 +93,19 @@
       </div>
     </div>
 
-    <div class="agent-grid-2 dashboard-market-row">
+    <div class="dashboard-market-row">
       <div class="agent-card">
-        <h2>Upcoming News Events</h2>
-        <div id="upcomingNewsPanel">Loading...</div>
-      </div>
-      <div class="agent-card">
-        <h2>Trading Window</h2>
+        <h2>Trading Window &middot; London</h2>
         <div class="london-clock">
           <div class="clock-label">London Time</div>
           <div class="clock-display" id="londonClock">--:--</div>
           <div id="windowStatus" class="window-status">--</div>
           <div class="window-info">Active window: 07:00 - 11:00 UTC</div>
         </div>
+      </div>
+      <div class="agent-card">
+        <h2>Upcoming News Events</h2>
+        <div id="upcomingNewsPanel">Loading...</div>
       </div>
     </div>
   </section>

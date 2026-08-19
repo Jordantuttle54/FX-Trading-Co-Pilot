@@ -25,124 +25,170 @@
   font-size: 10px !important;
 }
 
-/* Dashboard: compact cockpit grid with news in the top-right.
-   Must be scoped to .active - #tab-dashboard alone has higher specificity
-   than the base .agent-section{display:none} rule and would override it
-   even when this tab isn't the active one, leaking the dashboard onto
-   every other tab. */
+/* Small "PAPER" mode pill folded into the header status strip, instead of
+   taking up a whole card's worth of space further down the page. */
+#paperModeBadge {
+  font-weight: 800 !important;
+  letter-spacing: .02em !important;
+}
+
+/* Dashboard layout: three stacked rows instead of one dense multi-column
+   grid - a hero P&L card + risk strip, then Open Trades / Audit Log, then
+   Trading Window / News at the bottom. Must be scoped to .active -
+   #tab-dashboard alone has higher specificity than the base
+   .agent-section{display:none} rule and would override it even when this
+   tab isn't the active one, leaking the dashboard onto every other tab. */
 #tab-dashboard.active {
-  --dash-gap: 12px;
+  --dash-gap: 16px;
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
-  display: grid !important;
-  /* The last column used to be minmax(270px, 1fr) - flexible, growing to
-     fill any leftover viewport width. Since Open Trades / Confidence Audit
-     below split this same 6-column grid 3-and-3, having a flexible track
-     fall entirely on one side made that side balloon far wider than the
-     other on a wide screen. Fixed widths on every column keep both halves
-     genuinely equal regardless of viewport width. */
-  grid-template-columns: 160px 160px 160px 240px 205px 320px;
-  grid-auto-rows: auto;
+  display: flex !important;
+  flex-direction: column;
   gap: var(--dash-gap) !important;
-  justify-content: start !important;
-  align-items: start !important;
 }
 
-/* Flatten the old row wrappers so the cards can be placed exactly where needed. */
-#tab-dashboard .dashboard-kpi-row,
-#tab-dashboard .dashboard-status-row,
-#tab-dashboard .dashboard-market-row {
+/* The old row wrappers are no longer needed as layout grids - they're just
+   plain block containers now, each row below defines its own grid. */
+#tab-dashboard .dashboard-status-row {
   display: contents !important;
 }
 
 #tab-dashboard .agent-card {
   margin: 0 !important;
-  padding: 12px 14px !important;
-  border-radius: 14px !important;
 }
 
-/* Top row: System / Daily / Weekly / Today's Snapshot / Trading Window / News. */
-#tab-dashboard .card-accent-blue {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-#tab-dashboard .card-accent-green {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-#tab-dashboard .card-accent-orange {
-  grid-column: 3;
-  grid-row: 1;
-}
-
-#tab-dashboard .dashboard-snapshot-card {
-  grid-column: 4;
-  grid-row: 1;
-}
-
-#tab-dashboard .dashboard-market-row > .agent-card:last-child {
-  grid-column: 5;
-  grid-row: 1;
-}
-
-#tab-dashboard .dashboard-market-row > .agent-card:first-child {
-  grid-column: 6;
-  grid-row: 1;
-}
-
-#tab-dashboard .card-accent-blue,
-#tab-dashboard .card-accent-green,
-#tab-dashboard .card-accent-orange,
-#tab-dashboard .dashboard-snapshot-card,
-#tab-dashboard .dashboard-market-row > .agent-card:last-child,
-#tab-dashboard .dashboard-market-row > .agent-card:first-child {
-  /* min-height (a floor) instead of a hard height+overflow:hidden (a cap) -
-     Trading Window and Upcoming News were both a few pixels taller than the
-     old 126px cap, so their last line was getting clipped off. Letting cards
-     grow to fit their own content means nothing is ever cut off again, no
-     matter how much a given card's content grows. */
-  min-height: 150px !important;
-  overflow: visible !important;
-}
-
-#tab-dashboard .card-eyebrow {
-  font-size: 9px !important;
-  margin-bottom: 5px !important;
-  letter-spacing: .08em !important;
-}
-
-#tab-dashboard .card-big-value {
-  font-size: clamp(22px, 1.8vw, 30px) !important;
-  line-height: .95 !important;
-}
-
-#tab-dashboard .card-sub {
-  font-size: 9px !important;
-  margin-top: 5px !important;
-}
-
-#tab-dashboard h2 {
-  font-size: 14px !important;
-  margin: 0 0 7px !important;
-}
-
-/* Remove the old Trading Status card completely. */
+/* Old Trading Status card - superseded by the risk strip, kept in the DOM
+   (hidden) since renderTradingStatus() still writes into it. */
 #tab-dashboard .dashboard-trading-status-card {
   display: none !important;
 }
 
-/* Second row: Open Trades and Confidence Audit are wrapped in their own
-   dedicated 50/50 sub-grid (.dashboard-row2 in the HTML) instead of sharing
-   row 1's column tracks - row 1 has one flexible last column so splitting
-   it 3-and-3 gave the two cards very different actual pixel widths on wide
-   screens. A genuinely independent 1fr/1fr grid keeps them equal at any
-   viewport width regardless of what row 1 needs. */
+/* Row 1: P&L hero + risk strip. */
+#tab-dashboard .dashboard-hero-row {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: var(--dash-gap);
+  align-items: stretch;
+}
+
+#tab-dashboard .dashboard-pnl-card {
+  background: linear-gradient(180deg, rgba(248,81,73,.07), rgba(255,255,255,.008)), var(--panel);
+  border: 1px solid rgba(248,81,73,.24);
+  border-radius: 16px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+#tab-dashboard .dashboard-risk-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+#tab-dashboard .dashboard-risk-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 24px;
+}
+
+#tab-dashboard .dashboard-risk-cell:first-child {
+  padding-left: 0;
+  border-right: 1px solid var(--border);
+}
+
+#tab-dashboard .dashboard-risk-cell:last-child {
+  padding-right: 0;
+}
+
+#tab-dashboard .dashboard-risk-card .card-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+#tab-dashboard .dashboard-risk-card .card-big-value {
+  font-size: 28px !important;
+  font-weight: 900;
+  letter-spacing: -.01em;
+  line-height: 1;
+}
+
+#tab-dashboard .dashboard-risk-card .card-sub {
+  font-size: 11px !important;
+  color: var(--muted);
+  margin-top: 8px !important;
+}
+
+/* Today's P&L: a hero number the eye goes to first, with the supporting
+   stats (trades, win/loss, best pair) as a smaller row underneath rather
+   than five equal-weight tiles. */
+#tab-dashboard .dashboard-snapshot-grid {
+  display: block;
+}
+
+#tab-dashboard .dash-pnl-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#tab-dashboard .dash-pnl-value {
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: -.02em;
+  line-height: 1;
+  margin: 12px 0 18px;
+}
+
+#tab-dashboard .dash-pnl-stats {
+  display: flex;
+  gap: 24px;
+}
+
+#tab-dashboard .dash-pnl-stats .dash-mini-stat {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+#tab-dashboard .dash-mini-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 4px;
+}
+
+#tab-dashboard .dash-mini-stat strong {
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+#tab-dashboard .dash-positive { color: var(--green) !important; }
+#tab-dashboard .dash-negative { color: var(--red) !important; }
+
+/* Row 2: Open Trades and Confidence Audit Log, split into their own
+   dedicated 50/50 sub-grid so both are genuinely equal width at any
+   viewport size, independent of anything else on the page. */
 #tab-dashboard .dashboard-row2 {
-  grid-column: 1 / -1;
-  grid-row: 2;
   display: grid !important;
   grid-template-columns: 1fr 1fr;
   gap: var(--dash-gap) !important;
@@ -150,165 +196,206 @@
 
 #tab-dashboard .dashboard-open-trades-card,
 #tab-dashboard .dashboard-audit-card {
-  min-height: 250px !important;
-  max-width: none !important;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px;
+  min-height: 250px;
 }
 
-#tab-dashboard #openTradesPanel {
-  min-height: 40px !important;
-  font-size: 11px !important;
+#tab-dashboard .dashboard-open-trades-card h2,
+#tab-dashboard .dashboard-audit-card h2 {
+  font-size: 14px;
+  font-weight: 800;
+  margin: 0 0 16px;
 }
 
-#tab-dashboard #openTradesPanel .open-trade-card,
-#tab-dashboard #openTradesPanel > div {
-  padding: 10px !important;
-  border-radius: 11px !important;
+/* Open trade cards: entry/SL/TP as a small labeled mini-grid instead of an
+   inline "Entry: x | SL: y | TP: z" line, and a direction badge that
+   matches the rest of the app's buy/sell coloring. */
+#tab-dashboard #openTradesPanel .open-trade-card {
+  background: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
 }
 
-#tab-dashboard #auditLogPanel {
-  max-height: 188px !important;
-  padding: 8px 10px !important;
-  margin-bottom: 9px !important;
-  border-radius: 11px !important;
-  overflow: auto !important;
+#tab-dashboard #openTradesPanel .open-trade-card + .open-trade-card {
+  margin-top: 12px !important;
 }
 
-/* Stop audit cells overlapping: every column can shrink and ellipsis cleanly. */
-#tab-dashboard .audit-row {
-  grid-template-columns: 132px minmax(130px, 170px) minmax(68px, 88px) minmax(62px, 78px) minmax(220px, 1fr) !important;
-  gap: 10px !important;
-  padding: 6px 0 !important;
-  font-size: 10px !important;
-  align-items: center !important;
-  min-width: 0 !important;
-}
-
-#tab-dashboard .audit-row > span,
-#tab-dashboard .audit-time,
-#tab-dashboard .audit-event,
-#tab-dashboard .audit-pair,
-#tab-dashboard .audit-decision,
-#tab-dashboard .audit-reason {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-}
-
-#tab-dashboard .audit-event,
-#tab-dashboard .audit-pair {
-  max-width: 100% !important;
-}
-
-/* Top-right news card: compact but fully visible - no max-height/overflow
-   cap, so every event listed actually shows instead of being cut off. */
-#tab-dashboard #upcomingNewsPanel {
-  min-height: 78px !important;
-  font-size: 10px !important;
-}
-
-#tab-dashboard #upcomingNewsPanel > div,
-#tab-dashboard #upcomingNewsPanel .news-row,
-#tab-dashboard #upcomingNewsPanel p {
-  margin: 0 !important;
-  padding: 4px 0 !important;
-}
-
-/* Today's Snapshot compact layout. */
-#tab-dashboard .dashboard-snapshot-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-#tab-dashboard .dash-mini-stat {
-  border: 1px solid rgba(148,163,184,.18);
-  background: rgba(15,23,42,.56);
-  border-radius: 9px;
-  padding: 6px 7px;
-  min-width: 0;
-}
-
-#tab-dashboard .dash-mini-stat span {
-  display: block;
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 850;
-  text-transform: uppercase;
+#tab-dashboard #openTradesPanel .candidate-dir {
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 900;
   letter-spacing: .04em;
-  margin-bottom: 2px;
 }
 
-#tab-dashboard .dash-mini-stat strong {
-  display: block;
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.05;
+/* Confidence Audit Log: a colored verdict badge above the reason text,
+   which wraps onto as many lines as it needs instead of being ellipsized
+   or requiring horizontal scroll to read. */
+#tab-dashboard #auditLogPanel {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 14px;
+}
+
+#tab-dashboard .audit-row {
+  display: grid !important;
+  grid-template-columns: 58px 76px 1fr !important;
+  grid-template-rows: auto auto;
+  column-gap: 14px !important;
+  row-gap: 2px;
+  padding: 11px 0 !important;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px !important;
+  align-items: start !important;
+}
+
+#tab-dashboard .audit-row:last-child {
+  border-bottom: 0;
+}
+
+#tab-dashboard .audit-time {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  font-size: 11px !important;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-#tab-dashboard .dash-mini-wide {
-  grid-column: 1 / -1;
+#tab-dashboard .audit-event {
+  display: none !important;
 }
 
-#tab-dashboard .dash-positive { color: #38bdf8 !important; }
-#tab-dashboard .dash-negative { color: #fb7185 !important; }
+#tab-dashboard .audit-pair {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  padding-top: 1px;
+}
 
-/* Trading Window compact card. */
+#tab-dashboard .audit-decision {
+  grid-column: 3;
+  grid-row: 1;
+  display: inline-block;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  background: rgba(154,168,186,.14);
+  color: var(--muted);
+}
+
+#tab-dashboard .audit-decision.rejected,
+#tab-dashboard .audit-decision.no_setup {
+  background: rgba(248,81,73,.14);
+  color: var(--red);
+}
+
+#tab-dashboard .audit-decision.trade_candidate,
+#tab-dashboard .audit-decision.executed,
+#tab-dashboard .audit-decision.paper_executed {
+  background: rgba(63,185,80,.14);
+  color: var(--green);
+}
+
+#tab-dashboard .audit-reason {
+  grid-column: 3;
+  grid-row: 2;
+  font-size: 12px !important;
+  color: var(--muted);
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  line-height: 1.45;
+}
+
+/* Row 3: Trading Window and Upcoming News, moved to the bottom of the page. */
+#tab-dashboard .dashboard-market-row {
+  display: grid !important;
+  grid-template-columns: 340px 1fr;
+  gap: var(--dash-gap) !important;
+}
+
+#tab-dashboard .dashboard-market-row .agent-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px;
+}
+
+#tab-dashboard .dashboard-market-row h2 {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
 #tab-dashboard .london-clock {
-  min-height: auto !important;
-  padding: 4px 0 0 !important;
-  text-align: center !important;
+  text-align: center;
+  padding: 0;
 }
 
 #tab-dashboard .clock-label {
-  font-size: 8px !important;
-  letter-spacing: .08em !important;
+  display: none;
 }
 
 #tab-dashboard .clock-display {
-  font-size: clamp(23px, 2.2vw, 32px) !important;
-  line-height: 1.05 !important;
-  margin: 4px 0 !important;
+  font-size: 40px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+  line-height: 1;
+  margin: 0 0 10px;
 }
 
 #tab-dashboard #windowStatus {
-  font-size: 10px !important;
-  font-weight: 900 !important;
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(154,168,186,.1);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  color: var(--muted);
+}
+
+#tab-dashboard #windowStatus.window-open {
+  background: rgba(63,185,80,.13);
+  border-color: rgba(63,185,80,.34);
+  color: var(--green);
 }
 
 #tab-dashboard .window-info {
-  font-size: 8px !important;
-  margin-top: 4px !important;
-}
-
-@media (max-width: 1420px) {
-  #tab-dashboard {
-    grid-template-columns: 155px 155px 155px 235px 200px 280px !important;
-  }
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 12px;
 }
 
 @media (max-width: 1280px) {
-  #tab-dashboard {
-    grid-template-columns: repeat(3, minmax(180px, 1fr)) !important;
-  }
-
-  #tab-dashboard .card-accent-blue,
-  #tab-dashboard .card-accent-green,
-  #tab-dashboard .card-accent-orange,
-  #tab-dashboard .dashboard-snapshot-card,
-  #tab-dashboard .dashboard-market-row > .agent-card:last-child,
-  #tab-dashboard .dashboard-market-row > .agent-card:first-child {
-    grid-row: auto !important;
-    grid-column: auto !important;
-    height: auto !important;
-    min-height: 108px !important;
-  }
-
-  #tab-dashboard .dashboard-row2 {
-    grid-column: 1 / -1 !important;
+  #tab-dashboard .dashboard-hero-row,
+  #tab-dashboard .dashboard-row2,
+  #tab-dashboard .dashboard-market-row {
     grid-template-columns: 1fr !important;
+  }
+
+  #tab-dashboard .dashboard-risk-cell:first-child {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 18px;
+    margin-bottom: 18px;
   }
 }

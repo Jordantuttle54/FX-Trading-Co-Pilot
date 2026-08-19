@@ -155,15 +155,19 @@ async function loadAuditLog() {
                   el.innerHTML = '<div class="muted small">No audit entries yet.</div>';
                   return;
           }
-          el.innerHTML = data.slice(0, 50).map(r => `
+          el.innerHTML = data.slice(0, 50).map(r => {
+                const fullTimestamp = (r.created_at || '').slice(0, 19).replace('T', ' ');
+                const timeOnly = (r.created_at || '').slice(11, 19) || fullTimestamp;
+                return `
                 <div class="audit-row">
-                        <span class="audit-time">${(r.created_at || '').slice(0, 19).replace('T', ' ')}</span>
+                        <span class="audit-time" title="${fullTimestamp}">${timeOnly}</span>
                                 <span class="audit-event">${r.event_type || ''}</span>
                                         <span class="audit-pair">${r.pair || ''}</span>
                                                 <span class="audit-decision ${r.decision}">${r.decision || ''}</span>
                                                         <span class="audit-reason">${r.reason || ''}</span>
                                                               </div>
-                                                                  `).join('');
+                                                                  `;
+          }).join('');
     } catch (e) {
           document.getElementById('auditLogPanel').innerHTML = `<span class="muted small">Error: ${e.message}</span>`;
     }
