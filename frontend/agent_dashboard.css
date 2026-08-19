@@ -1,0 +1,155 @@
+/* agent_dashboard.css - dashboard-specific visual cleanup */
+
+/* Header: keep the logout badge beside Kill Switch and remove the duplicate top-right scan CTA. */
+.agent-actions > button[onclick="runScan()"] {
+  display: none !important;
+}
+
+.agent-actions #authUserBadge {
+  position: static !important;
+  inset: auto !important;
+  z-index: auto !important;
+  margin: 0 0 0 4px !important;
+  padding: 6px 7px 6px 10px !important;
+  min-height: 34px !important;
+  gap: 8px !important;
+  border-color: rgba(212,175,55,.26) !important;
+  background: rgba(5,12,22,.78) !important;
+  box-shadow: none !important;
+  white-space: nowrap;
+}
+
+.agent-actions #authUserBadge button {
+  min-height: 26px !important;
+  padding: 5px 8px !important;
+  font-size: 10px !important;
+}
+
+/* Dashboard: smaller, tighter panels. */
+#tab-dashboard {
+  --dash-gap: 12px;
+}
+
+#tab-dashboard .agent-grid-3,
+#tab-dashboard .agent-grid-2 {
+  gap: var(--dash-gap) !important;
+  margin-bottom: var(--dash-gap) !important;
+}
+
+#tab-dashboard .agent-grid-3 > .agent-card {
+  min-height: 78px !important;
+  padding: 11px 15px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
+
+#tab-dashboard .card-eyebrow {
+  font-size: 9px !important;
+  margin-bottom: 5px !important;
+  letter-spacing: .08em !important;
+}
+
+#tab-dashboard .card-big-value {
+  font-size: clamp(24px, 2vw, 34px) !important;
+  line-height: .95 !important;
+}
+
+#tab-dashboard .card-sub {
+  font-size: 10px !important;
+  margin-top: 5px !important;
+}
+
+#tab-dashboard .dashboard-status-row {
+  grid-template-columns: 1fr !important;
+}
+
+#tab-dashboard .dashboard-trading-status-card {
+  display: none !important;
+}
+
+#tab-dashboard .dashboard-open-trades-card {
+  min-height: 88px !important;
+  padding: 13px 15px !important;
+}
+
+#tab-dashboard .dashboard-open-trades-card h2,
+#tab-dashboard .dashboard-audit-card h2,
+#tab-dashboard .dashboard-market-row h2 {
+  font-size: 14px !important;
+  margin-bottom: 7px !important;
+}
+
+#tab-dashboard #openTradesPanel {
+  min-height: 40px !important;
+  font-size: 11px !important;
+}
+
+#tab-dashboard .dashboard-audit-card {
+  padding: 13px 15px !important;
+}
+
+#tab-dashboard #auditLogPanel {
+  max-height: 236px !important;
+  padding: 8px 10px !important;
+  margin-bottom: 9px !important;
+  border-radius: 11px !important;
+}
+
+#tab-dashboard .audit-row {
+  grid-template-columns: 138px 116px 76px 90px minmax(0,1fr) !important;
+  gap: 9px !important;
+  padding: 6px 0 !important;
+  font-size: 11px !important;
+  align-items: center !important;
+}
+
+#tab-dashboard .audit-time,
+#tab-dashboard .audit-event,
+#tab-dashboard .audit-pair,
+#tab-dashboard .audit-decision {
+  white-space: nowrap;
+}
+
+#tab-dashboard .audit-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#tab-dashboard .dashboard-market-row {
+  grid-template-columns: minmax(0,1.3fr) minmax(280px,.7fr) !important;
+}
+
+#tab-dashboard .dashboard-market-row > .agent-card {
+  min-height: 132px !important;
+  padding: 13px 15px !important;
+}
+
+#tab-dashboard #upcomingNewsPanel,
+#tab-dashboard .london-clock {
+  min-height: 86px !important;
+}
+
+#tab-dashboard .london-clock {
+  padding: 8px 0 !important;
+}
+
+#tab-dashboard .clock-display {
+  font-size: clamp(28px, 3vw, 40px) !important;
+}
+
+#tab-dashboard .window-info,
+#tab-dashboard .clock-label {
+  font-size: 10px !important;
+}
+
+@media (max-width: 1180px) {
+  .agent-actions #authUserBadge {
+    margin-left: 0 !important;
+  }
+
+  #tab-dashboard .dashboard-market-row {
+    grid-template-columns: 1fr !important;
+  }
+}
