@@ -49,7 +49,7 @@
 
 <main class="agent-main">
   <section id="tab-dashboard" class="agent-section active">
-    <div class="agent-grid-3">
+    <div class="agent-grid-3 dashboard-kpi-row">
       <div class="agent-card card-accent-blue">
         <div class="card-eyebrow">System Mode</div>
         <div class="card-big-value" id="systemMode">PAPER</div>
@@ -79,10 +79,16 @@
         <h2>Open Trades</h2>
         <div id="openTradesPanel">Loading...</div>
       </div>
+      <div class="agent-card dashboard-snapshot-card">
+        <h2>Today's Snapshot</h2>
+        <div id="dashboardTodaySnapshot" class="dashboard-snapshot-grid">
+          <div class="muted small">Loading today...</div>
+        </div>
+      </div>
     </div>
 
     <div class="agent-card dashboard-audit-card">
-      <h2>Recent Decisions (Audit Log)</h2>
+      <h2>Confidence Audit Log</h2>
       <div id="auditLogPanel" class="audit-log">Loading...</div>
       <button class="btn-secondary" onclick="loadAuditLog()">Refresh Log</button>
     </div>
@@ -351,6 +357,7 @@
 
 <script src="/static/auth.js"></script>
 <script src="/static/agent.js"></script>
+<script src="/static/agent_dashboard.js"></script>
 <script src="/static/agent_chart_precision_patch.js"></script>
 <script src="/static/agent_phase1.js"></script>
 <script src="/static/agent_open_trades_fix.js"></script>
