@@ -216,6 +216,40 @@
     </div>
 
     <div class="agent-card">
+      <h2>Per-Pair Strategy Calibration</h2>
+      <p class="card-sub">Sweeps trend-strength, reward:risk, and stop-distance settings against one pair's own real historical data to find a better-fitting configuration than the shared defaults. This only proposes - nothing changes live until you approve and activate a version below.</p>
+      <div class="wallet-actions">
+        <div class="wallet-action-group">
+          <label>Pair
+            <select id="calibratePair">Loading...</select>
+          </label>
+        </div>
+        <div class="wallet-action-group">
+          <label>Candles
+            <select id="calibrateCandleCount">
+              <option value="1000">1000 (~6 weeks H1)</option>
+              <option value="2000" selected>2000 (~12 weeks H1)</option>
+              <option value="5000">5000 (~28 weeks H1, max)</option>
+            </select>
+          </label>
+        </div>
+        <div class="wallet-action-group">
+          <label>Lookback
+            <select id="calibrateLookback">
+              <option value="100">100 candles</option>
+              <option value="150" selected>150 candles</option>
+              <option value="200">200 candles</option>
+            </select>
+          </label>
+        </div>
+        <div class="wallet-action-group">
+          <button class="btn-primary" onclick="runCalibration()">&#9654; Calibrate</button>
+        </div>
+      </div>
+      <div id="calibratePanel" style="margin-top:16px">Pick a pair and run calibration to compare candidate settings against its own real history.</div>
+    </div>
+
+    <div class="agent-card">
       <h2>Performance Report</h2>
       <button class="btn-primary" onclick="loadPerformance()">&#9654; Generate Report</button>
       <div id="performancePanel" style="margin-top:16px">Click to generate the performance report.</div>
