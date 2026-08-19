@@ -460,6 +460,33 @@ def sma(vals: List[float], n: int) -> Optional[float]:
     return sum(vals[-n:]) / n if len(vals) >= n else None
 
 
+def rsi(vals: List[float], n: int = 14) -> Optional[float]:
+    """Standard Wilder-style RSI over the last n closes."""
+    if len(vals) < n + 1:
+        return None
+    gains, losses = [], []
+    for i in range(-n, 0):
+        change = vals[i] - vals[i - 1]
+        gains.append(max(change, 0.0))
+        losses.append(max(-change, 0.0))
+    avg_gain = sum(gains) / n
+    avg_loss = sum(losses) / n
+    if avg_loss == 0:
+        return 100.0
+    return 100 - (100 / (1 + avg_gain / avg_loss))
+
+
+def atr(highs: List[float], lows: List[float], closes: List[float], n: int = 14) -> Optional[float]:
+    """Average True Range over the last n candles - a volatility-based stop distance."""
+    if len(closes) < n + 1:
+        return None
+    trs = []
+    for i in range(-n, 0):
+        h, l, prev_close = highs[i], lows[i], closes[i - 1]
+        trs.append(max(h - l, abs(h - prev_close), abs(l - prev_close)))
+    return sum(trs) / n
+
+
 def analyse(pair: str) -> Dict[str, Any]:
     cs = get_candles(pair)
     closes = [float(c["close"]) for c in cs]
@@ -468,24 +495,44 @@ def analyse(pair: str) -> Dict[str, Any]:
     price = closes[-1] if closes else base_price(pair)
     if len(closes) < 20:
         return {"pair": pair, "bias": "Neutral", "trend": "Insufficient data", "zone": "N/A", "volatility": "Unknown", "note": "Need more candles.", "price": rprice(pair, price), "indicators": {}}
+    pip = pip_size(pair)
     s20 = sma(closes, 20) or price
     s50 = sma(closes, min(50, len(closes))) or s20
+    # SMA20 five candles ago - confirms the average is actually sloping in the
+    # trend direction rather than just happening to be stacked while flat/choppy.
+    s20_prior = sma(closes[:-5], 20) if len(closes) >= 25 else None
+    slope = (s20 - s20_prior) if s20_prior is not None else 0.0
     recent_high = max(highs[-20:])
     recent_low = min(lows[-20:])
-    avg_pips = (sum(abs(h - l) for h, l in zip(highs[-20:], lows[-20:])) / 20) / pip_size(pair)
+    avg_pips = (sum(abs(h - l) for h, l in zip(highs[-20:], lows[-20:])) / 20) / pip
+    rsi_val = rsi(closes)
+    atr_val = atr(highs, lows, closes)
+    atr_pips = round(atr_val / pip, 1) if atr_val else None
     if price > s20 > s50:
         bias, trend, note = "Bullish", "Price is above the 20 and 50 period moving averages.", "Buy setups may be higher quality after pullbacks."
     elif price < s20 < s50:
         bias, trend, note = "Bearish", "Price is below the 20 and 50 period moving averages.", "Sell setups may be higher quality after pullbacks."
     else:
         bias, trend, note = "Neutral", "Mixed or ranging structure.", "Wait for cleaner structure."
+    slope_aligned = (bias == "Bullish" and slope > 0) or (bias == "Bearish" and slope < 0)
     vol = "Very High" if avg_pips > 120 else "High" if avg_pips > 70 else "Medium" if avg_pips > 35 else "Low"
     p = precision(pair)
-    return {"pair": pair, "bias": bias, "trend": trend, "zone": f"{recent_low:.{p}f} support / {recent_high:.{p}f} resistance", "volatility": vol, "note": note, "price": rprice(pair, price), "indicators": {"sma20": rprice(pair, s20), "sma50": rprice(pair, s50), "recent_high": rprice(pair, recent_high), "recent_low": rprice(pair, recent_low), "avg_range_pips": round(avg_pips, 1)}}
+    return {
+        "pair": pair, "bias": bias, "trend": trend,
+        "zone": f"{recent_low:.{p}f} support / {recent_high:.{p}f} resistance",
+        "volatility": vol, "note": note, "price": rprice(pair, price),
+        "indicators": {
+            "sma20": rprice(pair, s20), "sma50": rprice(pair, s50),
+            "recent_high": rprice(pair, recent_high), "recent_low": rprice(pair, recent_low),
+            "avg_range_pips": round(avg_pips, 1), "rsi": round(rsi_val, 1) if rsi_val is not None else None,
+            "atr_pips": atr_pips, "slope_aligned": slope_aligned,
+        },
+    }
 
 
 def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None) -> Dict[str, Any]:
     a = analyse(pair)
+    ind = a.get("indicators", {})
     direction = "buy" if a["bias"] == "Bullish" else "sell" if a["bias"] == "Bearish" else "none"
     rr = 2.2 if direction != "none" else 0.0
     conf = 88 if direction != "none" else 0
@@ -493,16 +540,42 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
         conf += 3
     elif a.get("volatility") == "Very High":
         conf -= 8
+
+    rsi_val = ind.get("rsi")
+    confidence_notes = []
+    if direction == "buy" and rsi_val is not None and rsi_val > 70:
+        conf -= 15
+        confidence_notes.append(f"RSI {rsi_val:.0f} is overbought - weaker odds buying here.")
+    elif direction == "sell" and rsi_val is not None and rsi_val < 30:
+        conf -= 15
+        confidence_notes.append(f"RSI {rsi_val:.0f} is oversold - weaker odds selling here.")
+
+    if direction != "none" and not ind.get("slope_aligned", True):
+        conf -= 10
+        confidence_notes.append("The 20-period average isn't actually sloping in this direction yet - trend may be flattening.")
+
     conf = max(0, min(96, conf))
     entry = float(a["price"])
     pip = pip_size(pair)
-    stop_pips = 25.0 if pair == "XAU/USD" else 20.0
+    # Stop distance scales with each pair's own recent volatility (ATR) instead
+    # of a fixed pip count for every pair regardless of how much it actually
+    # moves, with a sane floor so quiet pairs don't get an unrealistically
+    # tight stop.
+    min_stop_pips = 15.0 if pair == "XAU/USD" else 12.0
+    atr_pips = ind.get("atr_pips")
+    stop_pips = max(min_stop_pips, round(atr_pips * 1.2, 1)) if atr_pips else (25.0 if pair == "XAU/USD" else 20.0)
     if direction == "buy":
         sl, tp = entry - stop_pips * pip, entry + stop_pips * rr * pip
+        room_to_extreme = ind.get("recent_high", entry) - entry
     elif direction == "sell":
         sl, tp = entry + stop_pips * pip, entry - stop_pips * rr * pip
+        room_to_extreme = entry - ind.get("recent_low", entry)
     else:
         sl = tp = entry
+        room_to_extreme = None
+    if direction != "none" and room_to_extreme is not None and room_to_extreme < stop_pips * rr * pip:
+        conf = max(0, conf - 10)
+        confidence_notes.append("Take-profit distance would require a new 20-candle extreme - less room to run than a typical pullback entry.")
     stop_dist = abs(entry - sl)
     if fixed_units and fixed_units > 0:
         # A fixed unit size makes every trade's exposure predictable at a
@@ -524,7 +597,7 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     if KILL_SWITCH["active"]:
         rejects.append(KILL_SWITCH["reason"] or "Kill switch active.")
     status = "trade_candidate" if not rejects else ("no_setup" if direction == "none" else "rejected")
-    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback"}
+    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback"}
 
 
 def calc_r(t: Dict[str, Any], close_price: float) -> float:
