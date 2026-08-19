@@ -78,10 +78,6 @@
     return item?.rejection_reason || item?.entry_reason || item?.reason || 'Scanner conditions were not strong enough for a clean setup.';
   }
 
-  function setupName(item) {
-    return item?.setup_label || item?.setup_type || 'Live-data trend continuation';
-  }
-
   function statusLine() {
     const status = qs('scannerStatus');
     if (!status || status.dataset.scannerPolished) return;
@@ -109,12 +105,25 @@
         grid-area: scan !important;
         margin: 0 !important;
         padding: 18px 20px !important;
+        border: 1px solid rgba(148,163,184,.24) !important;
+        background:
+          radial-gradient(circle at 0% 0%, rgba(88,166,255,.13), transparent 34%),
+          radial-gradient(circle at 96% 0%, rgba(227,179,65,.08), transparent 30%),
+          linear-gradient(180deg, rgba(255,255,255,.060), rgba(255,255,255,.018)),
+          rgba(15,23,42,.72) !important;
+        box-shadow: 0 22px 55px rgba(0,0,0,.30) !important;
+        backdrop-filter: blur(14px) saturate(125%);
       }
 
       #tab-scanner > .agent-card:last-child {
         grid-area: history !important;
         margin: 0 !important;
         padding: 16px 18px !important;
+        border: 1px solid rgba(148,163,184,.22) !important;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,.050), rgba(255,255,255,.014)),
+          rgba(15,23,42,.68) !important;
+        backdrop-filter: blur(12px) saturate(120%);
       }
 
       #tab-scanner #candidatesSection,
@@ -210,7 +219,7 @@
 
       #tab-scanner .candidates-grid {
         display: grid !important;
-        grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)) !important;
+        grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)) !important;
         gap: 14px !important;
         align-items: stretch !important;
       }
@@ -220,7 +229,7 @@
         display: flex;
         flex-direction: column;
         min-width: 0;
-        min-height: 330px;
+        min-height: 342px;
         padding: 18px;
         border-radius: 16px;
         border: 1px solid rgba(88,166,255,.23);
@@ -298,24 +307,28 @@
 
       #tab-scanner .scanner-levels {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0,1fr));
-        gap: 6px;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+        gap: 8px 10px;
         margin: 0 0 13px;
-        padding: 10px;
+        padding: 10px 11px;
         border-radius: 11px;
         background: rgba(2,6,23,.32);
         border: 1px solid rgba(148,163,184,.17);
         font-size: 11px;
       }
 
+      #tab-scanner .scanner-levels div {
+        min-width: 0;
+      }
+
       #tab-scanner .scanner-levels strong {
         display: block;
         color: var(--text);
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 850;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        overflow: visible;
+        text-overflow: clip;
       }
 
       #tab-scanner .scanner-thesis {
@@ -513,7 +526,7 @@
         <div class="scanner-levels">
           <div><span>Entry</span><strong>${formatPrice(pair, item.entry)}</strong></div>
           <div><span>SL</span><strong>${formatPrice(pair, item.stop_loss)}</strong></div>
-          <div><span>TP1</span><strong>${formatPrice(pair, item.take_profit)}</strong></div>
+          <div><span>TP</span><strong>${formatPrice(pair, item.take_profit)}</strong></div>
           <div><span>RR</span><strong>${escapeHtml(rr(item))}</strong></div>
         </div>
         <p class="scanner-thesis">${escapeHtml(thesis(item))}</p>
