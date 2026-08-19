@@ -317,6 +317,48 @@ def ensure_db() -> bool:
     return _DB_OK
 
 
+_STRATEGY_TABLE_OK: Optional[bool] = None
+
+
+def ensure_strategy_versions_table() -> bool:
+    """A separate, independently-cached guard just for strategy_versions.
+
+    ensure_db()'s _DB_OK flag is cached for the lifetime of a warm process.
+    A process that was already warm (and had already cached _DB_OK = True)
+    before this table's CREATE TABLE statement was added to ensure_db()
+    would short-circuit past it forever, since it never re-runs the CREATE
+    TABLE block once _DB_OK is set - this happened in production and left
+    strategy_versions never actually created despite ensure_db() reporting
+    the database as healthy. This runs its own CREATE TABLE IF NOT EXISTS
+    the first time it's actually needed in a given process, independent of
+    whatever ensure_db() already decided.
+    """
+    global _STRATEGY_TABLE_OK
+    if _STRATEGY_TABLE_OK is not None:
+        return _STRATEGY_TABLE_OK
+    if not ensure_db():
+        _STRATEGY_TABLE_OK = False
+        return False
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS strategy_versions (
+                        id TEXT PRIMARY KEY,
+                        created_at TEXT NOT NULL,
+                        created_by TEXT,
+                        description TEXT,
+                        config JSONB NOT NULL,
+                        approved BOOLEAN NOT NULL DEFAULT FALSE,
+                        active BOOLEAN NOT NULL DEFAULT FALSE
+                    )
+                """)
+        _STRATEGY_TABLE_OK = True
+    except Exception:
+        _STRATEGY_TABLE_OK = False
+    return _STRATEGY_TABLE_OK
+
+
 def normalise_payload(value: Any) -> Dict[str, Any]:
     if isinstance(value, dict):
         return value
@@ -344,7 +386,7 @@ def get_active_strategy_config() -> Dict[str, Dict[str, Any]]:
     if _ACTIVE_STRATEGY_CACHE is not None and (now_ts - _ACTIVE_STRATEGY_CACHE_AT) < _ACTIVE_STRATEGY_CACHE_TTL:
         return _ACTIVE_STRATEGY_CACHE
     cfg: Dict[str, Dict[str, Any]] = {}
-    if ensure_db():
+    if ensure_strategy_versions_table():
         try:
             with db_conn() as conn:
                 with conn.cursor() as cur:
@@ -377,7 +419,7 @@ def save_strategy_version(user: str, description: str, config_patch: Dict[str, D
     for pair, overrides in config_patch.items():
         merged.setdefault(pair, {}).update(overrides)
     item = {"id": str(uuid.uuid4()), "created_at": now(), "created_by": user, "description": description, "config": merged, "approved": False, "active": False}
-    if ensure_db():
+    if ensure_strategy_versions_table():
         with db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -390,7 +432,7 @@ def save_strategy_version(user: str, description: str, config_patch: Dict[str, D
 
 
 def list_strategy_versions() -> List[Dict[str, Any]]:
-    if ensure_db():
+    if ensure_strategy_versions_table():
         with db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id,created_at,created_by,description,config,approved,active FROM strategy_versions ORDER BY created_at DESC")
@@ -408,7 +450,7 @@ def get_strategy_version(version_id: str) -> Dict[str, Any]:
 
 def approve_strategy_version(version_id: str) -> Dict[str, Any]:
     get_strategy_version(version_id)  # 404s if it doesn't exist
-    if ensure_db():
+    if ensure_strategy_versions_table():
         with db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("UPDATE strategy_versions SET approved = TRUE WHERE id = %s", (version_id,))
@@ -423,7 +465,7 @@ def activate_strategy_version(version_id: str) -> Dict[str, Any]:
     v = get_strategy_version(version_id)
     if not v.get("approved"):
         raise HTTPException(status_code=422, detail="Strategy version must be approved before it can be activated.")
-    if ensure_db():
+    if ensure_strategy_versions_table():
         with db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("UPDATE strategy_versions SET active = FALSE")
