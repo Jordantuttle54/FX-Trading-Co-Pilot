@@ -57,8 +57,9 @@
     if (!badge) {
       badge = document.createElement("div");
       badge.id = "authUserBadge";
-      document.body.appendChild(badge);
     }
+    const target = document.querySelector(".agent-actions") || document.body;
+    if (badge.parentElement !== target) target.appendChild(badge);
     badge.innerHTML = `<span>Signed in as <strong>${user}</strong></span><button type="button" id="authLogout">Log out</button>`;
     document.getElementById("authLogout").onclick = () => {
       localStorage.removeItem(TOKEN_KEY);
