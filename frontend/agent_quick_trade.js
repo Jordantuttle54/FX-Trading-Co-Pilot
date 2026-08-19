@@ -103,57 +103,87 @@
         padding: 14px !important;
       }
       #tab-trades #agentChartPanel .chart-head-row {
-        margin-bottom: 8px !important;
+        margin-bottom: 5px !important;
+        align-items: flex-start !important;
       }
       #tab-trades #agentChartPanel .chart-head-row h2 {
-        margin-bottom: 4px !important;
+        margin-bottom: 3px !important;
+      }
+      #tab-trades #agentChartPanel .chart-head-row .card-sub {
+        font-size: 10px !important;
+        line-height: 1.3 !important;
+      }
+      #tab-trades #agentChartPanel .chart-head-row > #chartSizeBtn {
+        display: none !important;
       }
       #tab-trades #agentChartPanel .chart-toolbar {
         align-items: end !important;
-        gap: 10px !important;
-        margin: 8px 0 10px !important;
+        gap: 7px !important;
+        margin: 5px 0 8px !important;
       }
       #tab-trades #agentChartPanel .chart-toolbar label {
-        font-size: 10px !important;
-        gap: 3px !important;
+        font-size: 9px !important;
+        gap: 2px !important;
       }
       #tab-trades #agentChartPanel .chart-toolbar select,
       #tab-trades #agentChartPanel .chart-toolbar button {
-        min-height: 34px !important;
-        height: 34px !important;
+        min-height: 30px !important;
+        height: 30px !important;
+        padding: 5px 9px !important;
+        font-size: 11px !important;
+        border-radius: 8px !important;
       }
       #tab-trades #agentChartPanel .chart-toolbar select {
-        min-width: 118px !important;
+        min-width: 96px !important;
+      }
+      #tab-trades #agentChartPanel .chart-toolbar #chartTradeSelect {
+        min-width: 138px !important;
+      }
+      #tab-trades #agentChartPanel .chart-toolbar #chartSizeBtn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        white-space: nowrap !important;
       }
       #tab-trades #agentChartPanel .chart-workspace {
         display: grid !important;
-        grid-template-columns: minmax(0, 1.58fr) minmax(360px, .92fr) !important;
+        grid-template-columns: minmax(0, 1.5fr) minmax(348px, .92fr) !important;
         grid-template-rows: auto auto !important;
-        gap: 12px !important;
+        gap: 10px !important;
         align-items: start !important;
       }
       #tab-trades #agentChartPanel .chart-main-panel {
         grid-column: 1 !important;
         grid-row: 1 / span 2 !important;
         min-width: 0 !important;
+        align-self: start !important;
       }
       #tab-trades #agentChartPanel #chartAccountPanel {
         grid-column: 2 !important;
         grid-row: 1 !important;
         min-height: 0 !important;
-        padding: 12px !important;
+        padding: 10px !important;
+        margin: 0 !important;
+        position: static !important;
+        transform: none !important;
+        width: 100% !important;
+        align-self: start !important;
       }
       #tab-trades #agentChartPanel #quickTradePanel {
         grid-column: 2 !important;
         grid-row: 2 !important;
         margin: 0 !important;
         min-width: 0 !important;
+        position: static !important;
+        transform: none !important;
+        width: 100% !important;
+        align-self: start !important;
       }
       #tab-trades #agentChartPanel .chart-frame {
-        min-height: 340px !important;
+        min-height: 330px !important;
       }
       #tab-trades #agentChartPanel #agentLiveChart {
-        height: 340px !important;
+        height: 330px !important;
       }
       #tab-trades #agentChartPanel.chart-expanded .chart-workspace {
         grid-template-columns: 1fr !important;
@@ -173,78 +203,92 @@
         height: 680px !important;
       }
       #tab-trades #agentChartPanel .chart-status-row {
-        gap: 7px !important;
-        margin-top: 7px !important;
+        gap: 6px !important;
+        margin-top: 6px !important;
       }
       #tab-trades #agentChartPanel .chart-pill {
-        min-height: 26px !important;
-        padding: 4px 9px !important;
-        font-size: 10px !important;
+        min-height: 23px !important;
+        padding: 3px 8px !important;
+        font-size: 9px !important;
       }
       #tab-trades #agentChartPanel .chart-trade-list {
-        margin-top: 8px !important;
+        margin-top: 7px !important;
+      }
+      #tab-trades #agentChartPanel .chart-account-top {
+        margin-bottom: 7px !important;
+      }
+      #tab-trades #agentChartPanel .chart-account-title {
+        font-size: 13px !important;
+      }
+      #tab-trades #agentChartPanel .chart-account-sub {
+        font-size: 9px !important;
       }
       #tab-trades #agentChartPanel .chart-money-grid {
-        gap: 8px !important;
-        margin: 8px 0 !important;
+        gap: 7px !important;
+        margin: 7px 0 !important;
       }
       #tab-trades #agentChartPanel .chart-money-cell {
-        padding: 9px !important;
-        min-height: 58px !important;
+        padding: 7px !important;
+        min-height: 49px !important;
       }
       #tab-trades #agentChartPanel .chart-money-label {
-        font-size: 10px !important;
+        font-size: 9px !important;
+        margin-bottom: 2px !important;
       }
       #tab-trades #agentChartPanel .chart-money-value {
-        font-size: 15px !important;
+        font-size: 13px !important;
       }
       #tab-trades #agentChartPanel .chart-position-list {
-        max-height: 145px !important;
-        margin-top: 8px !important;
-        padding-top: 8px !important;
+        max-height: 115px !important;
+        margin-top: 7px !important;
+        padding-top: 7px !important;
+      }
+      #tab-trades #agentChartPanel .chart-account-note {
+        font-size: 9px !important;
+        margin-top: 6px !important;
       }
       .quick-trade-panel {
         border: 1px solid var(--border);
         background: linear-gradient(180deg, rgba(15,23,42,.94), rgba(7,13,24,.96));
         border-radius: 14px;
-        padding: 12px;
+        padding: 10px;
         box-shadow: 0 14px 34px rgba(0,0,0,.20);
       }
       .quick-trade-title-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
-        margin-bottom: 10px;
+        gap: 8px;
+        margin-bottom: 7px;
       }
       .quick-trade-title {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 15px;
+        gap: 7px;
+        font-size: 13px;
         font-weight: 950;
         letter-spacing: -0.03em;
       }
       .quick-trade-icon {
         color: #facc15;
-        font-size: 16px;
+        font-size: 14px;
       }
       .quick-trade-grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 8px;
-        margin-bottom: 9px;
+        gap: 6px;
+        margin-bottom: 7px;
       }
       .quick-trade-field {
         display: flex;
         flex-direction: column;
         min-width: 0;
-        gap: 4px;
+        gap: 3px;
       }
       .quick-trade-field label,
       .quick-trade-field span {
         color: var(--muted, #9fb0c7);
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 850;
         line-height: 1.1;
       }
@@ -253,25 +297,25 @@
       .quick-close-select {
         width: 100% !important;
         min-width: 0 !important;
-        height: 34px !important;
-        min-height: 34px !important;
-        font-size: 12px !important;
-        padding: 7px 9px !important;
+        height: 30px !important;
+        min-height: 30px !important;
+        font-size: 11px !important;
+        padding: 5px 8px !important;
       }
       .quick-trade-action-grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 8px;
-        margin: 8px 0;
+        gap: 6px;
+        margin: 6px 0;
       }
       .quick-trade-close-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 8px;
+        gap: 6px;
         align-items: end;
       }
       .quick-close-select-row {
-        margin-top: 8px;
+        margin-top: 6px;
       }
       .quick-trade-panel button,
       .quick-trade-panel .btn-primary,
@@ -279,22 +323,22 @@
       .quick-trade-panel .btn-sell,
       .quick-trade-panel .btn-quick-close {
         width: 100%;
-        min-height: 34px !important;
-        height: 34px !important;
-        padding: 7px 10px !important;
-        font-size: 12px !important;
+        min-height: 31px !important;
+        height: 31px !important;
+        padding: 6px 8px !important;
+        font-size: 11px !important;
         white-space: nowrap;
       }
       .quick-trade-warning {
         color: var(--text-muted, #9fb0c7);
-        font-size: 10px;
-        margin-top: 8px;
-        line-height: 1.4;
+        font-size: 9px;
+        margin-top: 6px;
+        line-height: 1.3;
       }
       .quick-trade-result {
-        font-size: 11px;
-        margin-top: 7px;
-        line-height: 1.35;
+        font-size: 10px;
+        margin-top: 6px;
+        line-height: 1.3;
       }
       .btn-buy {
         background: #16a34a;
@@ -361,10 +405,22 @@
     return PAIRS.map(pair => `<option value="${pair}" ${pair === selected ? 'selected' : ''}>${pair}</option>`).join('');
   }
 
+  function positionChartSizeButton() {
+    const panel = qs('agentChartPanel');
+    const toolbar = panel?.querySelector('.chart-toolbar');
+    const autoButton = qs('chartAutoBtn');
+    const sizeButton = qs('chartSizeBtn');
+    if (toolbar && autoButton && sizeButton && sizeButton.parentElement !== toolbar) {
+      autoButton.insertAdjacentElement('afterend', sizeButton);
+    }
+  }
+
   function positionQuickPanel(panel) {
     const accountPanel = qs('chartAccountPanel');
     const chartPanel = qs('agentChartPanel');
     const toolbar = chartPanel?.querySelector('.chart-toolbar');
+
+    positionChartSizeButton();
 
     if (accountPanel && accountPanel.parentNode && panel.parentNode !== accountPanel.parentNode) {
       accountPanel.insertAdjacentElement('afterend', panel);
@@ -381,6 +437,7 @@
 
   function injectQuickTradePanel() {
     injectStyles();
+    positionChartSizeButton();
     const chartPanel = qs('agentChartPanel');
     if (!chartPanel) return;
 
@@ -646,8 +703,11 @@
     });
     const observer = new MutationObserver(() => {
       injectQuickTradePanel();
+      positionChartSizeButton();
     });
     observer.observe(document.body, { childList: true, subtree: true });
+    setTimeout(positionChartSizeButton, 150);
+    setTimeout(positionChartSizeButton, 600);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
