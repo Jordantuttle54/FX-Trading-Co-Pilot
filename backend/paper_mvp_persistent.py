@@ -413,13 +413,13 @@ def snapshot() -> Dict[str, Any]:
     return synthetic_snapshot()
 
 
-def synthetic_candles(pair: str) -> List[Dict[str, Any]]:
+def synthetic_candles(pair: str, count: int = 120) -> List[Dict[str, Any]]:
     price = base_price(pair)
     pip = pip_size(pair)
     vol = 12 * pip if pair != "XAU/USD" else 2.0
     out = []
     random.seed(_stable_seed(pair + "candles") % 100000 + int(datetime.utcnow().strftime("%Y%m%d")))
-    for i in range(120):
+    for i in range(count):
         drift = math.sin(i / 12) * vol * 0.35
         op = price
         close = max(pip, op + random.uniform(-vol, vol) + drift)
@@ -487,8 +487,11 @@ def atr(highs: List[float], lows: List[float], closes: List[float], n: int = 14)
     return sum(trs) / n
 
 
-def analyse(pair: str) -> Dict[str, Any]:
-    cs = get_candles(pair)
+def analyse(pair: str, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    # A caller (the backtester) can pass an explicit historical candle window
+    # so the exact same analysis logic can be replayed point-in-time without
+    # ever seeing candles that hadn't happened yet at that point in history.
+    cs = candles if candles is not None else get_candles(pair)
     closes = [float(c["close"]) for c in cs]
     highs = [float(c["high"]) for c in cs]
     lows = [float(c["low"]) for c in cs]
@@ -530,8 +533,8 @@ def analyse(pair: str) -> Dict[str, Any]:
     }
 
 
-def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None) -> Dict[str, Any]:
-    a = analyse(pair)
+def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    a = analyse(pair, candles)
     ind = a.get("indicators", {})
     direction = "buy" if a["bias"] == "Bullish" else "sell" if a["bias"] == "Bearish" else "none"
     rr = 2.2 if direction != "none" else 0.0
@@ -566,16 +569,16 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     stop_pips = max(min_stop_pips, round(atr_pips * 1.2, 1)) if atr_pips else (25.0 if pair == "XAU/USD" else 20.0)
     if direction == "buy":
         sl, tp = entry - stop_pips * pip, entry + stop_pips * rr * pip
-        room_to_extreme = ind.get("recent_high", entry) - entry
     elif direction == "sell":
         sl, tp = entry + stop_pips * pip, entry - stop_pips * rr * pip
-        room_to_extreme = entry - ind.get("recent_low", entry)
     else:
         sl = tp = entry
-        room_to_extreme = None
-    if direction != "none" and room_to_extreme is not None and room_to_extreme < stop_pips * rr * pip:
-        conf = max(0, conf - 10)
-        confidence_notes.append("Take-profit distance would require a new 20-candle extreme - less room to run than a typical pullback entry.")
+    # Note: an earlier version penalized setups where price sat near the
+    # recent high/low, reasoning the take-profit would need a "new extreme."
+    # Backtesting this strategy showed that penalty was actively working
+    # against clean, strong trends - pushing to new highs during an uptrend
+    # is the expected, desired behaviour for a trend-continuation strategy,
+    # not a warning sign. Removed rather than kept as dead-weight logic.
     stop_dist = abs(entry - sl)
     if fixed_units and fixed_units > 0:
         # A fixed unit size makes every trade's exposure predictable at a
