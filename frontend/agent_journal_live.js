@@ -241,3 +241,17 @@
     startJournalRefresh();
   }
 })();
+
+(function () {
+  if (window.__agentChartInfoOverlayLoaderInstalled) return;
+  window.__agentChartInfoOverlayLoaderInstalled = true;
+  function loadOverlay() {
+    if (document.querySelector('script[src="/static/agent_chart_info_overlay.js"]')) return;
+    const script = document.createElement('script');
+    script.src = '/static/agent_chart_info_overlay.js';
+    script.defer = true;
+    document.body.appendChild(script);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadOverlay);
+  else loadOverlay();
+})();
