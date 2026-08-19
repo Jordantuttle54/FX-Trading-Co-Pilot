@@ -60,10 +60,50 @@
     return `${sign}£${Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
-  function formatPrice(value) {
+  function precisionForPair(pair) {
+    const p = String(pair || qs('chartPair')?.value || activeChartMeta.pair || '').toUpperCase();
+    if (p.includes('XAU') || p.includes('XAG')) return 2;
+    if (p.includes('JPY')) return 3;
+    return 5;
+  }
+
+  function minMoveForPair(pair) {
+    const precision = precisionForPair(pair);
+    if (precision === 2) return 0.01;
+    if (precision === 3) return 0.001;
+    return 0.00001;
+  }
+
+  function formatChartPrice(value, pair) {
     const n = Number(value);
     if (!Number.isFinite(n)) return '--';
-    return n >= 100 ? n.toFixed(3) : n.toFixed(5);
+    return n.toFixed(precisionForPair(pair));
+  }
+
+  function chartPriceFormat(pair) {
+    const resolvedPair = pair || qs('chartPair')?.value || activeChartMeta.pair || 'GBP/USD';
+    return {
+      type: 'custom',
+      minMove: minMoveForPair(resolvedPair),
+      formatter: price => formatChartPrice(price, qs('chartPair')?.value || activeChartMeta.pair || resolvedPair),
+    };
+  }
+
+  function applyChartPriceFormatting(pair) {
+    const resolvedPair = pair || qs('chartPair')?.value || activeChartMeta.pair || 'GBP/USD';
+    if (chart && typeof chart.applyOptions === 'function') {
+      chart.applyOptions({
+        localization: { priceFormatter: price => formatChartPrice(price, qs('chartPair')?.value || activeChartMeta.pair || resolvedPair) },
+        rightPriceScale: { borderColor: '#243244', alignLabels: true, entireTextOnly: true },
+      });
+    }
+    if (candleSeries && typeof candleSeries.applyOptions === 'function') {
+      candleSeries.applyOptions({ priceFormat: chartPriceFormat(resolvedPair) });
+    }
+  }
+
+  function formatPrice(value, pair) {
+    return formatChartPrice(value, pair);
   }
 
   function pnlClass(value) {
@@ -232,8 +272,10 @@
     chartContainer = qs('agentLiveChart');
     if (!chartContainer || !window.LightweightCharts) return;
     const height = chartExpanded ? 720 : 520;
+    const selectedPair = qs('chartPair')?.value || activeChartMeta.pair || 'GBP/USD';
     if (chart) {
       chart.resize(chartContainer.clientWidth || 900, chartContainer.clientHeight || height);
+      applyChartPriceFormatting(selectedPair);
       return;
     }
     chart = window.LightweightCharts.createChart(chartContainer, {
@@ -242,10 +284,20 @@
       layout: { background: { color: '#070d18' }, textColor: '#cbd5e1' },
       grid: { vertLines: { color: '#142033' }, horzLines: { color: '#142033' } },
       crosshair: { mode: window.LightweightCharts.CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#243244' },
+      localization: { priceFormatter: price => formatChartPrice(price, qs('chartPair')?.value || activeChartMeta.pair || selectedPair) },
+      rightPriceScale: { borderColor: '#243244', alignLabels: true, entireTextOnly: true },
       timeScale: { borderColor: '#243244', timeVisible: true, secondsVisible: false },
     });
-    candleSeries = chart.addCandlestickSeries({ upColor: '#16a34a', downColor: '#dc2626', borderUpColor: '#16a34a', borderDownColor: '#dc2626', wickUpColor: '#16a34a', wickDownColor: '#dc2626' });
+    candleSeries = chart.addCandlestickSeries({
+      upColor: '#16a34a',
+      downColor: '#dc2626',
+      borderUpColor: '#16a34a',
+      borderDownColor: '#dc2626',
+      wickUpColor: '#16a34a',
+      wickDownColor: '#dc2626',
+      priceFormat: chartPriceFormat(selectedPair),
+    });
+    applyChartPriceFormatting(selectedPair);
     window.addEventListener('resize', () => {
       if (chart && chartContainer) chart.resize(chartContainer.clientWidth || 900, chartContainer.clientHeight || (chartExpanded ? 720 : 520));
     });
@@ -377,9 +429,9 @@
     el.innerHTML = visible.map(t => `
       <div class="chart-trade-chip">
         <strong><span class="chart-swatch" style="background:${t.palette.entry}"></span>${escapeHtml(tradeLabel(t))}</strong>
-        Entry: ${formatPrice(entryValue(t))}<br>
-        SL: ${formatPrice(slValue(t))}<br>
-        TP: ${formatPrice(tpValue(t))}<br>
+        Entry: ${formatPrice(entryValue(t), t.pair || activeChartMeta.pair)}<br>
+        SL: ${formatPrice(slValue(t), t.pair || activeChartMeta.pair)}<br>
+        TP: ${formatPrice(tpValue(t), t.pair || activeChartMeta.pair)}<br>
         <span class="muted">${escapeHtml(t.setup_label || t.setup_type || '')}</span>
       </div>
     `).join('');
@@ -387,6 +439,7 @@
 
   function applyOverlays(data) {
     clearPriceLines();
+    applyChartPriceFormatting(data.pair || activeChartMeta.pair);
     const quote = data.current_price || {};
     if (quote.price) {
       latestPricesByPair[data.pair || activeChartMeta.pair] = Number(quote.price);
@@ -448,7 +501,7 @@
       const current = latestPricesByPair[t.pair];
       return `
         <div class="chart-position-row">
-          <div><div class="chart-position-name">${escapeHtml(tradeLabel(t))}</div><div class="chart-position-meta">${escapeHtml(t.pair || '')} ${escapeHtml(String(t.direction || '').toUpperCase())} | Current ${formatPrice(current)}</div></div>
+          <div><div class="chart-position-name">${escapeHtml(tradeLabel(t))}</div><div class="chart-position-meta">${escapeHtml(t.pair || '')} ${escapeHtml(String(t.direction || '').toUpperCase())} | Current ${formatPrice(current, t.pair || activeChartMeta.pair)}</div></div>
           <div class="chart-position-pnl ${pnlClass(pnl)}">${formatMoney(pnl)}</div>
         </div>`;
     }).join('') : '<div class="muted small">No open paper positions.</div>';
@@ -482,6 +535,7 @@
     const price = Number(tick.price);
     if (!Number.isFinite(price)) return;
     latestPricesByPair[tick.pair || activeChartMeta.pair] = price;
+    applyChartPriceFormatting(tick.pair || activeChartMeta.pair);
     const candleTime = bucketTime(convertTime(tick.timestamp || tick.generated_at || new Date().toISOString()), activeChartMeta.timeframe);
     let last = currentCandles[currentCandles.length - 1];
     if (!last || candleTime > last.time) {
@@ -540,6 +594,7 @@
       if (!candles.length) throw new Error('No candle data returned');
       currentCandles = candles;
       activeChartMeta = { ...data, pair: data.pair || pair, timeframe: data.timeframe || timeframe, provider: data.provider || 'unknown' };
+      applyChartPriceFormatting(activeChartMeta.pair);
       candleSeries.setData(candles);
       chart.timeScale().fitContent();
       applyOverlays(data);
@@ -564,6 +619,7 @@
     setTimeout(() => {
       if (chart && chartContainer) {
         chart.resize(chartContainer.clientWidth || 900, chartContainer.clientHeight || (chartExpanded ? 720 : 520));
+        applyChartPriceFormatting(activeChartMeta.pair);
         chart.timeScale().fitContent();
       }
     }, 120);
