@@ -1,5 +1,9 @@
 # Roadmap
 
+> **Historical.** Phases 1–4 are complete. The current plan — the interface
+> restructure, agent autonomy, and everything required before trading real money —
+> lives in [ROAD_TO_LIVE.md](ROAD_TO_LIVE.md).
+
 ## Phase 1: Secure GitHub import
 
 - Import clean package into a private GitHub repo.
