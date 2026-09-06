@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import os
 from typing import Any, Dict, List, Optional, Set
 
@@ -210,9 +211,40 @@ def _verify_cron_request(request: Request) -> Dict[str, Any]:
     secret = os.getenv("CRON_SECRET", "").strip()
     if not secret:
         raise HTTPException(status_code=503, detail="CRON_SECRET is not configured on this Vercel project.")
+
     auth_header = (request.headers.get("authorization") or "").strip()
-    if auth_header != f"Bearer {secret}":
-        raise HTTPException(status_code=401, detail="Unauthorized cron request")
+    expected = f"Bearer {secret}"
+
+    # A bare "Unauthorized" gives whoever is wiring up a scheduler nothing to
+    # work with - a missing header, a truncated paste and a stale secret all
+    # look identical. These messages say which, using only lengths, never any
+    # part of the secret itself.
+    if not auth_header:
+        raise HTTPException(
+            status_code=401,
+            detail="No Authorization header was sent. Add a header named 'Authorization' "
+                   f"with the value 'Bearer <CRON_SECRET>' ({len(secret)} characters after 'Bearer ').",
+        )
+    if not auth_header.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="The Authorization header must start with 'Bearer ' followed by the secret.",
+        )
+
+    supplied = auth_header[7:].strip()
+    if len(supplied) != len(secret):
+        raise HTTPException(
+            status_code=401,
+            detail=f"The secret sent is {len(supplied)} characters but this deployment expects "
+                   f"{len(secret)}. Usually a truncated paste at one end or the other.",
+        )
+    # Constant-time, so a wrong secret can't be recovered by timing the replies.
+    if not hmac.compare_digest(supplied, secret):
+        raise HTTPException(
+            status_code=401,
+            detail="The secret sent is the right length but does not match this deployment. "
+                   "Check the value saved in Vercel, and that it has been redeployed since.",
+        )
     return {
         "authorized": True,
         "user_agent": request.headers.get("user-agent", ""),
