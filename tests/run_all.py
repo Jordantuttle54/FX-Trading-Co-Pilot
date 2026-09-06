@@ -33,6 +33,7 @@ DESCRIPTIONS = {
     "test_endpoint.py": "trade history repair endpoint",
     "test_notify.py": "alerting and the run watchdog",
     "test_stale.py": "market-closed detection",
+    "test_cronauth.py": "scheduled-job authentication and its error messages",
 }
 
 
