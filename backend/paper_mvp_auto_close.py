@@ -48,11 +48,25 @@ def _quote_for_pair(pair: str) -> Dict[str, Any]:
     return quick._latest_quote(pair)
 
 
+def _is_synthetic(quote: Dict[str, Any]) -> bool:
+    """True when this price was invented rather than fetched from the broker.
+
+    snapshot() falls back to synthetic prices whenever the OANDA call fails,
+    and those come from hardcoded base values that drift further from the real
+    market every month. Closing decisions made against them are meaningless:
+    a synthetic GBP/USD near 1.27 sits hundreds of pips below any current stop,
+    so every open position "hits" its stop at once. No real price, no close.
+    """
+    return "synthetic" in str(quote.get("source", "")).lower()
+
+
 def _close_side_price(trade: Dict[str, Any], quote: Dict[str, Any]) -> float:
     return quick._market_price_for_close(trade, quote)
 
 
 def _hit_reason(trade: Dict[str, Any], quote: Dict[str, Any]) -> Optional[str]:
+    if _is_synthetic(quote):
+        return None
     direction = _direction(trade.get("direction"))
     stop_loss = _sl(trade)
     take_profit = _target(trade)

@@ -871,7 +871,15 @@ def close_trade(user: str, trade_id: str, close_price: float, reason: str) -> Di
 
 def manage_trades(user: str, prices: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
     if not prices:
-        prices = {q["pair"]: float(q["price"]) for q in snapshot().get("quotes", [])}
+        # Only ever close against prices that actually came from the broker.
+        # snapshot() silently substitutes synthetic prices when the OANDA call
+        # fails, and those are far enough from the real market to stop out
+        # every open position at once.
+        prices = {
+            q["pair"]: float(q["price"])
+            for q in snapshot().get("quotes", [])
+            if "synthetic" not in str(q.get("source", "")).lower()
+        }
     actions = []
     for t in list_trades(user, "open"):
         price = prices.get(t["pair"])
