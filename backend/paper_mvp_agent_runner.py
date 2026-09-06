@@ -23,6 +23,7 @@ from fastapi import Depends, HTTPException, Query, Request
 from psycopg2.extras import Json
 from pydantic import BaseModel
 
+from . import notify as notifier
 from . import paper_mvp_persistent as base
 from . import paper_mvp_storage_compat as compat
 from . import paper_mvp_quick_trade as quick
@@ -45,7 +46,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "min_confidence": base.MIN_CONF,
     "respect_window": True,
     "fixed_units": None,         # None means risk-based sizing
+    "notify_webhook": "",        # ntfy.sh / Discord / Slack URL, empty = no alerts
 }
+
+# How long without a run before the agent is presumed broken rather than quiet.
+# Comfortably longer than a daily cron so a normal schedule never trips it.
+STALE_RUN_HOURS = float(os.getenv("AGENT_STALE_RUN_HOURS", "30"))
 
 # Its own guard rather than ensure_db(): that flag can be cached True from
 # before these tables existed, in a warm process that then never creates them.
@@ -62,6 +68,7 @@ class AgentConfigRequest(BaseModel):
     min_confidence: Optional[int] = None
     respect_window: Optional[bool] = None
     fixed_units: Optional[float] = None
+    notify_webhook: Optional[str] = None
 
 
 class AgentRunRequest(BaseModel):
@@ -131,6 +138,11 @@ def save_agent_config(user: str, updates: Dict[str, Any]) -> Dict[str, Any]:
     config["min_confidence"] = max(0, min(int(config["min_confidence"]), 100))
     config["pairs"] = [p for p in (config.get("pairs") or []) if p in base.WATCHLIST]
     config["strategies"] = [s for s in (config.get("strategies") or []) if s in base.STRATEGIES]
+
+    # Only https, so trade details can't go out in the clear. An empty string
+    # is how you turn alerts off, so it has to survive the None-filtering above.
+    hook = str(updates.get("notify_webhook", config.get("notify_webhook") or "")).strip()
+    config["notify_webhook"] = hook if hook.lower().startswith("https://") else ""
 
     if ensure_agent_tables():
         with base.db_conn() as conn:
@@ -300,8 +312,18 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
     skipped: List[Dict[str, Any]] = []
     considered: List[Dict[str, Any]] = []
 
+    def finish(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Record the run, then alert on it if it's worth interrupting someone."""
+        run = record_run(user, payload)
+        alert = notifier.summarise_run(run)
+        if alert:
+            run["notified"] = notifier.send(
+                alert["title"], alert["message"], config, alert["event"],
+            )
+        return run
+
     def stop(reason: str) -> Dict[str, Any]:
-        return record_run(user, {
+        return finish({
             "trigger": trigger, "dry_run": dry_run, "halted": True, "halt_reason": reason,
             "opened": [], "skipped": [], "considered": [], "limits": limits, "balance": balance,
         })
@@ -410,12 +432,57 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
         except Exception:
             pass
 
-    return record_run(user, {
+    return finish({
         "trigger": trigger, "dry_run": dry_run, "halted": False, "halt_reason": None,
         "opened": opened, "skipped": skipped, "considered": considered,
         "limits": limits, "balance": balance,
         "pairs_scanned": len(pairs), "opened_count": len(opened),
     })
+
+
+def run_health(user: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    """Whether the agent has run recently enough to be believed.
+
+    A scheduled job that has silently stopped looks exactly like a quiet
+    market from the outside, so the gap since the last run is worth surfacing
+    rather than leaving you to infer it.
+    """
+    runs = list_runs(user, 1)
+    last = runs[0] if runs else None
+    last_at = last.get("created_at") if last else None
+    hours = None
+    if last_at:
+        try:
+            when = datetime.fromisoformat(str(last_at).replace("Z", "+00:00"))
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            hours = round((datetime.now(timezone.utc) - when).total_seconds() / 3600.0, 1)
+        except Exception:
+            hours = None
+    # Only meaningful while the agent is supposed to be running.
+    stale = bool(config.get("enabled")) and (last_at is None or (hours is not None and hours > STALE_RUN_HOURS))
+    return {
+        "last_run_at": last_at,
+        "hours_since_last_run": hours,
+        "stale": stale,
+        "stale_after_hours": STALE_RUN_HOURS,
+        "message": (
+            "The agent is switched on but has not run recently - check the scheduler."
+            if stale else None
+        ),
+    }
+
+
+@app.post("/api/agent/agent-test-alert")
+async def send_test_alert(user: str = Depends(base.current_user)):
+    """Prove the webhook works before relying on it."""
+    config = get_agent_config(user)
+    result = notifier.send(
+        "FX Co-Pilot test alert",
+        "If you can read this, the agent can reach you.",
+        config, "test",
+    )
+    return {"result": result, "configured": bool(notifier.webhook_url(config))}
 
 
 @app.get("/api/agent/agent-config")
@@ -424,6 +491,8 @@ async def read_agent_config(user: str = Depends(base.current_user)):
     balance = _account_balance(user)
     return {
         "config": config,
+        "health": run_health(user, config),
+        "alerts_configured": bool(notifier.webhook_url(config)),
         "available_strategies": [
             {"id": "trend_continuation", "label": "Trend continuation"},
             {"id": "mean_reversion", "label": "Mean reversion"},

@@ -97,6 +97,24 @@
         </label>
       </div>
 
+      ${data.health && data.health.stale ? `<div class="result-loss small" style="margin-top:14px;">
+        &#9888; ${esc(data.health.message)}
+        ${data.health.hours_since_last_run != null ? ` Last run was ${esc(data.health.hours_since_last_run)} hours ago.` : ''}
+      </div>` : ''}
+
+      <div style="margin-top:18px;">
+        <div class="card-eyebrow" style="margin-bottom:6px;">
+          Alerts ${data.alerts_configured ? '<span class="result-win">&middot; on</span>' : '<span class="muted">&middot; off</span>'}
+        </div>
+        <div class="small muted" style="margin-bottom:8px;max-width:60ch;">
+          Where to tell you when the agent opens a trade, hits a loss limit, or can't get market data.
+          Paste an <strong>ntfy.sh</strong> topic URL for phone push, or a Discord/Slack webhook. Must be https.
+          Leave empty for no alerts.
+        </div>
+        <input type="text" id="agentWebhook" placeholder="https://ntfy.sh/your-private-topic"
+               value="${esc(c.notify_webhook || '')}" style="width:100%;max-width:520px;"/>
+      </div>
+
       <div style="margin-top:14px;">
         <div class="card-eyebrow" style="margin-bottom:6px;">Strategies <span class="muted">(none ticked = each pair's own setting)</span></div>
         ${strategyBoxes}
@@ -121,6 +139,9 @@
         </div>
         <div class="wallet-action-group">
           <button class="btn-secondary" onclick="testAgentRun(false)">Run Now</button>
+        </div>
+        <div class="wallet-action-group">
+          <button class="btn-secondary" onclick="sendTestAlert()">Send Test Alert</button>
         </div>
       </div>
 
@@ -147,8 +168,23 @@
       respect_window: !!qs('agentRespectWindow')?.checked,
       strategies: Array.from(document.querySelectorAll('.agent-strategy:checked')).map(i => i.value),
       pairs: Array.from(document.querySelectorAll('.agent-pair:checked')).map(i => i.value),
+      notify_webhook: (qs('agentWebhook')?.value || '').trim(),
     };
   }
+
+  window.sendTestAlert = async function sendTestAlert() {
+    // Save first, so testing the box you just typed into does what you expect.
+    try {
+      await api('/api/agent/agent-config', { method: 'POST', body: JSON.stringify(readForm()) });
+      const r = await api('/api/agent/agent-test-alert', { method: 'POST', body: '{}' });
+      await load();
+      say(r.result && r.result.sent
+        ? '<span class="result-win">Test alert sent - check your phone.</span>'
+        : `<span class="result-loss">Not sent: ${esc(r.result?.reason || 'unknown error')}</span>`);
+    } catch (err) {
+      say(`<span class="result-loss">Test failed: ${esc(err.message || err)}</span>`);
+    }
+  };
 
   async function load() {
     const el = qs('agentControlPanel');
