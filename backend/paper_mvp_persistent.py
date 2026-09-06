@@ -757,6 +757,40 @@ def analyse(pair: str, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[s
     }
 
 
+GOLD_PAIR = "XAU/USD"
+
+# Gold is the one instrument where a fixed unit size is genuinely dangerous.
+# Its stop distances are large in absolute terms - a 25-pip gold stop is $2.50,
+# where a 20-pip GBP/USD stop is $0.0020 - so the same 1,000 units risks about
+# £2 on GBP/USD and £2,500 on gold. Trades have been recorded risking £1,000
+# on a £10,000 account (10% on one position). This caps the money at risk on a
+# gold trade and scales the position down to fit, rather than refusing it.
+MAX_GOLD_RISK_PCT = float(os.getenv("MAX_GOLD_RISK_PCT", str(MAX_RISK)))
+
+
+def cap_gold_risk(pair: str, position_units: float, risk_amount: float, stop_distance: float, account_balance: float):
+    """Shrinks an oversized gold position to the risk cap.
+
+    Returns (position_units, risk_amount, note) where note is None when nothing
+    was capped, so callers can record on the trade that it was resized.
+    """
+    if pair != GOLD_PAIR or stop_distance <= 0 or risk_amount <= 0:
+        return position_units, risk_amount, None
+
+    max_risk = max(0.0, account_balance) * (MAX_GOLD_RISK_PCT / 100.0)
+    if max_risk <= 0 or risk_amount <= max_risk:
+        return position_units, risk_amount, None
+
+    capped_units = round(max_risk / stop_distance, 2)
+    return capped_units, round(capped_units * stop_distance, 2), {
+        "reason": "gold_risk_cap",
+        "cap_pct": MAX_GOLD_RISK_PCT,
+        "max_risk_amount": round(max_risk, 2),
+        "requested_units": position_units,
+        "requested_risk_amount": risk_amount,
+    }
+
+
 def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     strat = get_pair_strategy(pair, strategy_overrides)
     a = analyse(pair, candles)
@@ -815,6 +849,7 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     else:
         risk_amount = round(account_balance * (MAX_RISK / 100), 2)
         position_units = round(risk_amount / stop_dist, 2) if stop_dist > 0 else 0
+    position_units, risk_amount, gold_cap = cap_gold_risk(pair, position_units, risk_amount, stop_dist, account_balance)
     rejects = []
     if direction == "none":
         rejects.append("No clean directional bias.")
@@ -828,7 +863,7 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     if KILL_SWITCH["active"]:
         rejects.append(KILL_SWITCH["reason"] or "Kill switch active.")
     status = "trade_candidate" if not rejects else ("no_setup" if direction == "none" else "rejected")
-    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback", "strategy_config": strat}
+    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "risk_cap": gold_cap, "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback", "strategy_config": strat}
 
 
 def calc_r(t: Dict[str, Any], close_price: float) -> float:

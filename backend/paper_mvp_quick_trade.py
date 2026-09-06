@@ -205,6 +205,7 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
     else:
         risk_amount = round(balance * (risk_pct / 100.0), 2)
         position_units = round(risk_amount / stop_distance, 2) if stop_distance > 0 else 0
+    position_units, risk_amount, gold_cap = base.cap_gold_risk(pair, position_units, risk_amount, stop_distance, balance)
     trade = {
         "pair": pair,
         "direction": direction,
@@ -228,6 +229,7 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
         "risk_amount": risk_amount,
         "account_balance": balance,
         "position_units": position_units,
+        "risk_cap": gold_cap,
         "quote": quote,
         "manual_sl_used": manual_sl is not None,
         "manual_tp_used": manual_tp is not None,
