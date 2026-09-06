@@ -31,7 +31,7 @@ opens a real position.
 | `test_goldcap.py` | The gold risk cap, including that no other pair is affected. |
 | `test_endpoint.py` | The trade history repair: dry run doesn't mutate, apply is correct and idempotent, manual closes are left alone, and the wallet recomputes. |
 | `test_notify.py` | Alerting: what is worth interrupting someone for and what stays quiet, plus that a dead webhook cannot stop the agent trading. |
-| `test_stale.py` | Refusing to trade on a stale quote, which is what makes running outside the London window safe. |
+| `test_stale.py` | Refusing to trade on a closed market: a stale quote, a quote whose age can't be established, or one the broker flags as non-tradeable. With the London window switched off, this is the only thing keeping the agent out of the weekend. |
 
 ## Why these exist
 

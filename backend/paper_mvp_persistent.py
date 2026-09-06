@@ -625,7 +625,12 @@ def oanda_snapshot() -> Dict[str, Any]:
         bid = float(raw["closeoutBid"])
         ask = float(raw["closeoutAsk"])
         mid = (bid + ask) / 2
-        quotes.append({"pair": pair, "price": rprice(pair, mid), "bid": rprice(pair, bid), "ask": rprice(pair, ask), "spread_pips": round(abs(ask - bid) / pip_size(pair), 2), "timestamp": raw.get("time", now()), "source": "oanda-practice"})
+        # Pass OANDA's own tick time through untouched, and leave it absent if
+        # OANDA didn't send one. Stamping our own clock on a quote of unknown
+        # age is how a Friday-close price ends up looking a second old.
+        # "tradeable" is the broker telling us directly whether this market is
+        # open, which beats inferring it from how stale the price looks.
+        quotes.append({"pair": pair, "price": rprice(pair, mid), "bid": rprice(pair, bid), "ask": rprice(pair, ask), "spread_pips": round(abs(ask - bid) / pip_size(pair), 2), "timestamp": raw.get("time"), "tradeable": bool(raw.get("tradeable", True)), "market_status": str(raw.get("status") or ""), "source": "oanda-practice"})
     return {"provider": "oanda", "generated_at": now(), "quotes": quotes, "warnings": []}
 
 

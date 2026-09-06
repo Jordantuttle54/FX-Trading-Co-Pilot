@@ -263,16 +263,25 @@ def quote_freshness() -> Dict[str, Dict[str, Any]]:
         if not pair:
             continue
         age = None
+        raw_ts = str(q.get("timestamp") or "")
         try:
-            when = datetime.fromisoformat(str(q.get("timestamp") or "").replace("Z", "+00:00"))
+            when = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
             if when.tzinfo is None:
                 when = when.replace(tzinfo=timezone.utc)
             age = round((now - when).total_seconds() / 60.0, 1)
         except Exception:
             age = None
+        synthetic = "synthetic" in str(q.get("source", "")).lower()
         out[pair] = {
             "age_minutes": age,
-            "synthetic": "synthetic" in str(q.get("source", "")).lower(),
+            # Synthetic quotes are stamped with our own clock, so their age is
+            # meaningless but parseable. Only a real quote can vouch for itself.
+            "age_known": age is not None and not synthetic,
+            "synthetic": synthetic,
+            # Absent on synthetic quotes, so default to True and let the
+            # synthetic check above be the thing that rejects those.
+            "tradeable": bool(q.get("tradeable", True)),
+            "market_status": str(q.get("market_status") or ""),
         }
     return out
 
@@ -385,8 +394,22 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
 
         # A stale quote means the market is closed. Without this the agent
         # would happily trade Friday's closing price all weekend.
-        age = (freshness.get(pair) or {}).get("age_minutes")
-        if age is not None and age > MAX_QUOTE_AGE_MINUTES:
+        #
+        # This gate fails CLOSED. It used to skip itself whenever the age
+        # couldn't be worked out, which is backwards: not knowing how old a
+        # price is, is not a reason to trust it. That mattered little while the
+        # London window was on, because the window kept the agent away from the
+        # weekend anyway. With the window off this is the only thing left.
+        fresh = freshness.get(pair) or {}
+        if not fresh.get("tradeable", True):
+            status = fresh.get("market_status") or "not tradeable"
+            skipped.append({"pair": pair, "reason": f"{pair} is closed for trading right now ({status})."})
+            continue
+        if not fresh.get("age_known"):
+            skipped.append({"pair": pair, "reason": f"Could not tell how old the {pair} price is - not trading on it."})
+            continue
+        age = fresh.get("age_minutes")
+        if age > MAX_QUOTE_AGE_MINUTES:
             skipped.append({"pair": pair, "reason": f"Market looks closed - last {pair} quote is {age:.0f} min old."})
             continue
 
