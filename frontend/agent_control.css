@@ -1,0 +1,61 @@
+/* agent_control.css - scoped to the Autonomous Agent card only.
+   Deliberately not added to the global override pile: every rule here starts
+   with #agentControlCard so it cannot leak into another tab the way earlier
+   unscoped !important rules did. */
+
+/* The global input sizing (min-height 34px, for text fields) turns every
+   checkbox into a large floating square. Checkboxes want their natural size. */
+#agentControlCard input[type="checkbox"] {
+  min-height: 0 !important;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--gold, #E3B341);
+  cursor: pointer;
+}
+
+#agentControlCard label {
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Keep the checkbox and its text on one baseline. */
+#agentControlCard .wallet-action-group label,
+#agentControlCard label:has(input[type="checkbox"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+#agentControlCard .agent-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#agentControlCard .card-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#agentControlCard .wallet-actions {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  #agentControlCard .wallet-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #agentControlCard .wallet-action-group button {
+    width: 100%;
+  }
+}
