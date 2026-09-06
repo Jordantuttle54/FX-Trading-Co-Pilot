@@ -11,6 +11,13 @@ on:
   pull_request:
     branches: ["**"]
 
+# A push to a branch with an open PR fires both events, which would run the
+# suite twice for the same commit. Grouping by ref collapses that to one run,
+# and cancels a run still going when you push again.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
