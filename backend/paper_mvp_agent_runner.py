@@ -226,6 +226,45 @@ def loss_limit_state(user: str, balance: float) -> Dict[str, Any]:
     }
 
 
+# A quote this old means the market is shut, not that it stopped moving. Live
+# FX quotes refresh constantly, so nothing legitimate is this stale.
+MAX_QUOTE_AGE_MINUTES = float(os.getenv("AGENT_MAX_QUOTE_AGE_MINUTES", "15"))
+
+
+def quote_freshness() -> Dict[str, Dict[str, Any]]:
+    """How old each pair's last quote is, in minutes.
+
+    This is what makes running the agent outside the London window safe. The
+    window used to be doing double duty - a strategy preference AND an
+    accidental guard against trading a closed market. Drop the window and only
+    this stands between the agent and Saturday's stale Friday-close prices.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        snap = base.snapshot()
+    except Exception:
+        return out
+
+    now = datetime.now(timezone.utc)
+    for q in snap.get("quotes", []):
+        pair = q.get("pair")
+        if not pair:
+            continue
+        age = None
+        try:
+            when = datetime.fromisoformat(str(q.get("timestamp") or "").replace("Z", "+00:00"))
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            age = round((now - when).total_seconds() / 60.0, 1)
+        except Exception:
+            age = None
+        out[pair] = {
+            "age_minutes": age,
+            "synthetic": "synthetic" in str(q.get("source", "")).lower(),
+        }
+    return out
+
+
 def _opened_today(user: str) -> int:
     day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
@@ -292,6 +331,7 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
     room = min(room, day_room)
     pairs = config["pairs"] or list(base.WATCHLIST)
     overrides = {"strategies": config["strategies"]} if config["strategies"] else None
+    freshness = quote_freshness()
 
     for pair in pairs:
         if room <= 0:
@@ -320,6 +360,14 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
         if "synthetic" in str(best.get("source", "")).lower():
             skipped.append({"pair": pair, "reason": "Market data unavailable - refusing to trade on fallback prices."})
             continue
+
+        # A stale quote means the market is closed. Without this the agent
+        # would happily trade Friday's closing price all weekend.
+        age = (freshness.get(pair) or {}).get("age_minutes")
+        if age is not None and age > MAX_QUOTE_AGE_MINUTES:
+            skipped.append({"pair": pair, "reason": f"Market looks closed - last {pair} quote is {age:.0f} min old."})
+            continue
+
         if best.get("status") != "trade_candidate":
             skipped.append({"pair": pair, "reason": best.get("rejection_reason") or "No setup."})
             continue
