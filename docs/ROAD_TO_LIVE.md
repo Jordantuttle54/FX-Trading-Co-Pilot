@@ -43,23 +43,22 @@ Costs are US dollars as listed by each provider, checked August 2026.
 
 ## Phase 1: Run without a browser open
 
-Everything else assumes an agent you can leave alone. Today that is not true, and not
-because of the strategy.
+Everything else assumes an agent you can leave alone.
 
-1. **Schedule the stop and target check.** The endpoint exists and is already protected
-   by `CRON_SECRET` — it was built for this. Point a free external scheduler at it every
+1. **Schedule the stop and target check.** *Still to do — needs you.* The endpoint exists
+   and is already protected by `CRON_SECRET`. Point a free external scheduler at it every
    5 minutes during market hours. No code changes.
-2. **Build the scan-and-open job.** *Blocker.* Nothing currently opens a trade unless
-   someone clicks "Run Full Scan" in the UI. There is no scheduled equivalent, so an
-   unwatched agent closes trades but never takes any. Needs a scheduled endpoint that
-   scans the watchlist and opens qualifying trades while respecting the kill switch,
-   risk limits, trading window, news blackout and duplicate guard that already exist.
-3. **Test against the 10-second function limit.** Six pairs of live data may not finish
-   inside the free plan's cap. If not: split to one pair per run, or move to Pro.
-   Measure before paying.
-4. **Add a heartbeat.** Record when the agent last ran and what it decided. Without it,
-   "the scheduler broke three days ago" and "there were no good setups" look identical —
-   exactly the failure mode you cannot afford in something you have stopped watching.
+2. ~~**Build the scan-and-open job.**~~ **Done.** `/api/agent/cron/scan-open` scans the
+   watchlist and opens qualifying trades, gated on: agent enabled, kill switch, real
+   daily and weekly loss limits, the trading window, max concurrent positions, max trades
+   per day, a confidence floor, the duplicate guard, and a refusal to trade on fallback
+   prices. Also runnable from Settings, with a dry-run mode.
+3. **Test against the 10-second function limit.** *Still to check.* Six pairs of live data
+   may not finish inside the free plan's cap. If not: split to one pair per run, or move
+   to Pro. Measure before paying — the first live cron run will show it.
+4. ~~**Add a heartbeat.**~~ **Done.** Every run is recorded — what it scanned, what it
+   opened, what it skipped and why, and why it stood down. Visible in Settings and at
+   `/api/agent/agent-runs`.
 
 ## Phase 2: Controls and the broker seam
 
@@ -68,11 +67,11 @@ because of the strategy.
    total. Formalising that boundary costs very little now, lets execution logic be tested
    without touching a broker, and keeps the door open if OANDA's spreads are ever
    outgrown.
-2. **Agent controls in Settings.** On/off, which pairs may be traded unattended, scan
-   frequency, and the maximum number of concurrent positions. These are currently decided
-   in code rather than by the operator.
-3. **Run the trade history repair.** Already built and live, but it only corrects
-   existing records when run from Settings. Preview first, then apply.
+2. ~~**Agent controls in Settings.**~~ **Done.** On/off, allowed pairs, strategies, max
+   open trades, max trades per day, confidence floor, and whether to respect the London
+   window. Plus a dry run and a run-now button.
+3. **Run the trade history repair.** ~~Outstanding~~ **Done** — applied, correcting 13
+   trades. The numbers it produced exposed the synthetic-price bug fixed in #57.
 
 ---
 
@@ -237,9 +236,10 @@ stopped doing what its owner assumed it was doing.
 | --- | --- |
 | One wallet or two? | **Settled** — one shared wallet, P&L reported separately. Avoids splitting risk limits, sizing and deposits for a number that only needs looking at. |
 | Broker and host? | **Settled** — OANDA on Vercel. Revisit only at standard-lot size. |
-| How often should the agent scan? | Open. Every 5 minutes is responsive and within free limits; every 15 is gentler and probably makes no difference on an hourly-candle strategy. |
-| Which pairs may it trade unattended? | Open. Worth starting narrow — an unwatched agent trading gold on a tight stop is the highest-variance thing in the system. |
-| Trade only inside the London window? | Open. The logic exists; the question is whether the scheduled agent respects it strictly or may still manage existing positions outside it. |
+| How often should the agent scan? | Open. Vercel's free plan runs the scan once a weekday at 09:30 UTC. An external scheduler can make it every 5 minutes for free. |
+| Which pairs may it trade unattended? | Settable in Settings. Worth starting narrow — an unwatched agent trading gold on a tight stop is the highest-variance thing in the system. |
+| Trade only inside the London window? | Settable in Settings, on by default. |
+| Which strategies? | Settable per pair, or globally for the agent. Trend continuation is the default; mean reversion is opt-in and unproven. |
 
 ---
 

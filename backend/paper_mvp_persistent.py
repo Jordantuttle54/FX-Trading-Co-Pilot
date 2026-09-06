@@ -77,6 +77,17 @@ PAIR_STRATEGY_DEFAULTS: Dict[str, Any] = {
     "rsi_oversold": 30.0,
     "rsi_penalty": 15,                         # confidence points deducted for an RSI-extreme entry
     "slope_penalty": 10,                       # confidence points deducted when the SMA20 isn't sloping with the trend
+    # Which setups the scanner may look for on this pair, best-scoring wins.
+    # Trend continuation alone is the historical behaviour; mean reversion is
+    # opt-in per pair because it deliberately takes the trades trend
+    # continuation refuses, so the two want separate evidence before trusting.
+    "strategies": ["trend_continuation"],
+    # Mean-reversion parameters. Only read when that strategy is enabled.
+    "mr_overbought": 78.0,                     # RSI at/above this is a fade-the-move sell
+    "mr_oversold": 22.0,                       # RSI at/below this is a fade-the-move buy
+    "mr_rr": 1.5,                              # tighter target than trend continuation - reversion moves are shorter
+    "mr_stop_atr_mult": 1.4,                   # wider stop - fading a move needs room to be early
+    "mr_max_trend_strength": 1.2,              # refuse to fade a genuinely strong trend
 }
 # Per-pair overrides layered on top of the defaults above. Starts with just
 # the XAU/USD wider-stop override that already existed as a hardcoded
@@ -644,7 +655,11 @@ def synthetic_candles(pair: str, count: int = 120) -> List[Dict[str, Any]]:
         close = max(pip, op + random.uniform(-vol, vol) + drift)
         high = max(op, close) + abs(random.uniform(0, vol * 0.7))
         low = min(op, close) - abs(random.uniform(0, vol * 0.7))
-        out.append({"open": op, "high": high, "low": low, "close": close})
+        # Tagged so anything downstream can tell invented data from real data.
+        # get_candles() falls back to these silently when the OANDA fetch
+        # fails, including when credentials ARE configured, so "is OANDA set
+        # up" was never a safe proxy for "this price is real".
+        out.append({"open": op, "high": high, "low": low, "close": close, "synthetic": True})
         price = close
     return out
 
@@ -747,6 +762,9 @@ def analyse(pair: str, candles: Optional[List[Dict[str, Any]]] = None) -> Dict[s
         "pair": pair, "bias": bias, "trend": trend,
         "zone": f"{recent_low:.{p}f} support / {recent_high:.{p}f} resistance",
         "volatility": vol, "note": note, "price": rprice(pair, price),
+        # Truthful for these specific candles, rather than inferred from
+        # whether credentials happen to be configured.
+        "data_source": "synthetic-fallback" if any(c.get("synthetic") for c in cs[:3]) else "oanda",
         "indicators": {
             "sma20": rprice(pair, s20), "sma50": rprice(pair, s50),
             "recent_high": rprice(pair, recent_high), "recent_low": rprice(pair, recent_low),
@@ -791,12 +809,14 @@ def cap_gold_risk(pair: str, position_units: float, risk_amount: float, stop_dis
     }
 
 
-def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    strat = get_pair_strategy(pair, strategy_overrides)
-    a = analyse(pair, candles)
-    ind = a.get("indicators", {})
+def _setup_trend_continuation(a: Dict[str, Any], ind: Dict[str, Any], strat: Dict[str, Any]) -> Dict[str, Any]:
+    """Trade with the trend once the moving averages have separated.
+
+    The original and default strategy. Its output is deliberately identical to
+    the behaviour before strategies were pluggable, so existing backtests and
+    calibrations still mean what they meant.
+    """
     direction = "buy" if a["bias"] == "Bullish" else "sell" if a["bias"] == "Bearish" else "none"
-    rr = strat["rr"] if direction != "none" else 0.0
     conf = 88 if direction != "none" else 0
     if a.get("volatility") == "Medium":
         conf += 3
@@ -804,17 +824,122 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
         conf -= 8
 
     rsi_val = ind.get("rsi")
-    confidence_notes = []
+    notes: List[str] = []
     if direction == "buy" and rsi_val is not None and rsi_val > strat["rsi_overbought"]:
         conf -= strat["rsi_penalty"]
-        confidence_notes.append(f"RSI {rsi_val:.0f} is overbought - weaker odds buying here.")
+        notes.append(f"RSI {rsi_val:.0f} is overbought - weaker odds buying here.")
     elif direction == "sell" and rsi_val is not None and rsi_val < strat["rsi_oversold"]:
         conf -= strat["rsi_penalty"]
-        confidence_notes.append(f"RSI {rsi_val:.0f} is oversold - weaker odds selling here.")
+        notes.append(f"RSI {rsi_val:.0f} is oversold - weaker odds selling here.")
 
     if direction != "none" and not ind.get("slope_aligned", True):
         conf -= strat["slope_penalty"]
-        confidence_notes.append("The 20-period average isn't actually sloping in this direction yet - trend may be flattening.")
+        notes.append("The 20-period average isn't actually sloping in this direction yet - trend may be flattening.")
+
+    rejects: List[str] = []
+    if direction == "none":
+        rejects.append("No clean directional bias.")
+    trend_strength = ind.get("sma_separation_atr")
+    if direction != "none" and trend_strength is not None and trend_strength < strat["min_trend_strength"]:
+        rejects.append(
+            f"Trend too weak ({trend_strength}x ATR separation, need {strat['min_trend_strength']}x) - "
+            "the averages are still stacked close together, more likely chop than a real trend."
+        )
+
+    return {
+        "strategy": "trend_continuation",
+        "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade",
+        "setup_label": "Live-data trend continuation" if direction != "none" else "No trade",
+        "direction": direction,
+        "confidence": conf,
+        "notes": notes,
+        "rejects": rejects,
+        "rr": strat["rr"] if direction != "none" else 0.0,
+        "stop_atr_mult": strat["stop_atr_mult"],
+        "entry_reason": "paper-trade candidate based on live/demo candle trend structure",
+    }
+
+
+def _setup_mean_reversion(a: Dict[str, Any], ind: Dict[str, Any], strat: Dict[str, Any]) -> Dict[str, Any]:
+    """Fade a stretched move back toward the average.
+
+    Deliberately the mirror of trend continuation: it takes the RSI-extreme
+    entries that strategy penalises and refuses. That is the point of running
+    both - when every pair is simultaneously RSI-extended, trend continuation
+    rejects everything and there is nothing else looking at those setups.
+    It will not fight a genuinely strong trend, which is the way this kind of
+    setup usually loses.
+    """
+    rsi_val = ind.get("rsi")
+    direction = "none"
+    notes: List[str] = []
+    if rsi_val is not None:
+        if rsi_val >= strat["mr_overbought"]:
+            direction = "sell"
+            notes.append(f"RSI {rsi_val:.0f} is stretched high - fading the move back toward the average.")
+        elif rsi_val <= strat["mr_oversold"]:
+            direction = "buy"
+            notes.append(f"RSI {rsi_val:.0f} is stretched low - fading the move back toward the average.")
+
+    # Confidence scales with how stretched it is: the further past the
+    # threshold, the better the odds of a snap back.
+    conf = 0
+    if direction != "none":
+        edge = abs(rsi_val - (strat["mr_overbought"] if direction == "sell" else strat["mr_oversold"]))
+        conf = int(min(94, 82 + edge * 1.5))
+        if a.get("volatility") == "Very High":
+            conf -= 10
+            notes.append("Very high volatility - a stretched market can stay stretched.")
+
+    rejects: List[str] = []
+    if direction == "none":
+        rejects.append("RSI isn't stretched far enough to fade.")
+    trend_strength = ind.get("sma_separation_atr")
+    if direction != "none" and trend_strength is not None and trend_strength > strat["mr_max_trend_strength"]:
+        rejects.append(
+            f"Trend too strong to fade ({trend_strength}x ATR separation, limit {strat['mr_max_trend_strength']}x) - "
+            "a stretched reading inside a strong trend is usually continuation, not exhaustion."
+        )
+
+    return {
+        "strategy": "mean_reversion",
+        "setup_type": "live_data_mean_reversion" if direction != "none" else "no_trade",
+        "setup_label": "Live-data mean reversion" if direction != "none" else "No trade",
+        "direction": direction,
+        "confidence": conf,
+        "notes": notes,
+        "rejects": rejects,
+        "rr": strat["mr_rr"] if direction != "none" else 0.0,
+        "stop_atr_mult": strat["mr_stop_atr_mult"],
+        "entry_reason": "paper-trade candidate fading a stretched move back toward the average",
+    }
+
+
+STRATEGIES = {
+    "trend_continuation": _setup_trend_continuation,
+    "mean_reversion": _setup_mean_reversion,
+}
+
+
+def enabled_strategies(strat: Dict[str, Any]) -> List[str]:
+    """The strategies configured for a pair, ignoring any unknown names."""
+    names = strat.get("strategies") or ["trend_continuation"]
+    if isinstance(names, str):
+        names = [names]
+    valid = [n for n in names if n in STRATEGIES]
+    return valid or ["trend_continuation"]
+
+
+def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None, strategy: Optional[str] = None) -> Dict[str, Any]:
+    strat = get_pair_strategy(pair, strategy_overrides)
+    a = analyse(pair, candles)
+    ind = a.get("indicators", {})
+
+    setup = STRATEGIES.get(strategy or "trend_continuation", _setup_trend_continuation)(a, ind, strat)
+    direction = setup["direction"]
+    rr = setup["rr"]
+    conf = setup["confidence"]
+    confidence_notes = list(setup["notes"])
 
     conf = max(0, min(96, conf))
     entry = float(a["price"])
@@ -825,7 +950,7 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     # tight stop.
     min_stop_pips = strat["min_stop_pips"]
     atr_pips = ind.get("atr_pips")
-    stop_pips = max(min_stop_pips, round(atr_pips * strat["stop_atr_mult"], 1)) if atr_pips else strat["fallback_stop_pips"]
+    stop_pips = max(min_stop_pips, round(atr_pips * setup["stop_atr_mult"], 1)) if atr_pips else strat["fallback_stop_pips"]
     if direction == "buy":
         sl, tp = entry - stop_pips * pip, entry + stop_pips * rr * pip
     elif direction == "sell":
@@ -850,12 +975,9 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
         risk_amount = round(account_balance * (MAX_RISK / 100), 2)
         position_units = round(risk_amount / stop_dist, 2) if stop_dist > 0 else 0
     position_units, risk_amount, gold_cap = cap_gold_risk(pair, position_units, risk_amount, stop_dist, account_balance)
-    rejects = []
-    if direction == "none":
-        rejects.append("No clean directional bias.")
-    trend_strength = ind.get("sma_separation_atr")
-    if direction != "none" and trend_strength is not None and trend_strength < strat["min_trend_strength"]:
-        rejects.append(f"Trend too weak ({trend_strength}x ATR separation, need {strat['min_trend_strength']}x) - the averages are still stacked close together, more likely chop than a real trend.")
+    # Setup-specific reasons come from the strategy itself; the gates below
+    # are account-level and apply whichever strategy found the setup.
+    rejects = list(setup["rejects"])
     if ENFORCE_WINDOW and not london_window():
         rejects.append("Outside the configured London paper-trading window.")
     if direction != "none" and conf < MIN_CONF:
@@ -863,7 +985,24 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     if KILL_SWITCH["active"]:
         rejects.append(KILL_SWITCH["reason"] or "Kill switch active.")
     status = "trade_candidate" if not rejects else ("no_setup" if direction == "none" else "rejected")
-    return {"pair": pair, "direction": direction, "setup_type": "live_data_trend_continuation" if direction != "none" else "no_trade", "setup_label": "Live-data trend continuation" if direction != "none" else "No trade", "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} paper-trade candidate based on live/demo candle trend structure." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "risk_cap": gold_cap, "analysis": a, "blocked_events": [], "source": "oanda" if oanda_configured() else "synthetic-fallback", "strategy_config": strat}
+    return {"pair": pair, "direction": direction, "strategy": setup["strategy"], "setup_type": setup["setup_type"], "setup_label": setup["setup_label"], "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} {setup['entry_reason']}." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "risk_cap": gold_cap, "analysis": a, "blocked_events": [], "source": a.get("data_source") or ("oanda" if oanda_configured() else "synthetic-fallback"), "strategy_config": strat}
+
+
+def score_candidates(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Every enabled strategy's view of this pair, best candidate first.
+
+    Candles are fetched once and shared, so adding a strategy costs no extra
+    market data. Ordering puts executable candidates ahead of rejected ones,
+    then higher confidence first, so callers can simply take the head of the
+    list as "the best available setup right now".
+    """
+    strat = get_pair_strategy(pair, strategy_overrides)
+    shared_candles = candles if candles is not None else get_candles(pair)
+    results = [
+        score_candidate(pair, account_balance, fixed_units, shared_candles, strategy_overrides, name)
+        for name in enabled_strategies(strat)
+    ]
+    return sorted(results, key=lambda c: (c["status"] != "trade_candidate", -c["confidence"]))
 
 
 def calc_r(t: Dict[str, Any], close_price: float) -> float:
