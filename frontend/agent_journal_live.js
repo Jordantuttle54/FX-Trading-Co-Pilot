@@ -51,10 +51,19 @@
     return num(trade.exit_price, num(trade.close_price, num(trade.closed_price, num(trade.current_price, null))));
   }
 
+  // What this trade would actually fill at if closed right now. You exit a buy
+  // by selling into the bid and exit a sell by buying at the ask, so quoting
+  // both sides at the mid overstates every open position by half the spread.
+  // Falls back to the mid only when the broker gave us no bid/ask to use.
   function currentValue(trade) {
     if (!isOpen(trade)) return closeValue(trade);
-    const pair = trade.pair;
-    return num(livePrices[pair], num(trade.current_price, num(trade.market_price, null)));
+    const quote = livePrices[trade.pair];
+    if (quote) {
+      const side = String(trade.direction || '').toLowerCase() === 'sell' ? quote.ask : quote.bid;
+      if (side !== null && side !== undefined) return side;
+      if (quote.mid !== null && quote.mid !== undefined) return quote.mid;
+    }
+    return num(trade.current_price, num(trade.market_price, null));
   }
 
   function riskMoney(trade) {
@@ -136,12 +145,16 @@
     await Promise.allSettled(pairs.map(async (pair) => {
       if (!force && livePrices[pair] !== undefined && Date.now() - (priceLoadedAt[pair] || 0) < 6500) return;
       const tick = await api(`/api/agent/chart/tick?pair=${encodeURIComponent(pair)}`);
-      const price = num(tick.price, num(tick.mid, num(tick.ask, num(tick.bid, null))));
-      if (price !== null) {
-        livePrices[pair] = price;
+      const mid = num(tick.price, num(tick.mid, null));
+      // Keep both sides: which one a trade closes at depends on its direction.
+      const bid = num(tick.bid, mid);
+      const ask = num(tick.ask, mid);
+      if (mid !== null || bid !== null || ask !== null) {
+        livePrices[pair] = { mid, bid, ask };
         priceLoadedAt[pair] = Date.now();
         window.lastPrices = window.lastPrices || {};
-        window.lastPrices[pair] = price;
+        // Other scripts read this expecting a plain mid price - keep that shape.
+        window.lastPrices[pair] = mid !== null ? mid : (bid !== null ? bid : ask);
       }
     }));
   }
@@ -158,7 +171,7 @@
       <table class="trade-table journal-live-table">
         <thead><tr>
           <th>Trade</th><th>Pair</th><th>Dir</th><th>Setup</th><th>Conf</th><th>RR</th>
-          <th>Entry</th><th>Current</th><th>SL</th><th>TP</th><th>Status</th><th>Result</th><th>Tag</th><th>Opened</th>
+          <th>Entry</th><th>Close Now</th><th>SL</th><th>TP</th><th>Status</th><th>Result</th><th>Tag</th><th>Opened</th>
         </tr></thead>
         <tbody>
           ${trades.map(t => {
