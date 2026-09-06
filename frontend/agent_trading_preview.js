@@ -5,32 +5,25 @@
   if (window.__agentTradingPreviewInstalled) return;
   window.__agentTradingPreviewInstalled = true;
 
-  const PAIRS = ['GBP/USD', 'EUR/USD', 'USD/JPY', 'EUR/GBP', 'GBP/JPY', 'XAU/USD'];
   let mt4Timer = null;
   let scannerTimer = null;
-  let scannerPatched = false;
+  let runScanPatched = false;
 
   function qs(id) { return document.getElementById(id); }
   function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
-  function esc(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])); }
+  function esc(v) { return String(v ?? '').replace(/[&<>'\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;' }[c])); }
   function num(v, fb = null) {
     if (v === null || v === undefined || v === '') return fb;
     const n = Number(String(v).replace(/[£$,R%]/g, ''));
     return Number.isFinite(n) ? n : fb;
   }
   function isOpen(t) { return String(t.status || '').toLowerCase() === 'open'; }
-  function pairId(pair) { return String(pair || '').replace('/', '').toUpperCase(); }
   function side(t) { return String(t.direction || t.side || '').toLowerCase(); }
+  function pairId(pair) { return String(pair || '').replace('/', '').toUpperCase(); }
   function entry(t) { return num(t.entry_price, num(t.entry, num(t.open_price, null))); }
   function sl(t) { return num(t.stop_loss, num(t.sl, null)); }
   function tp(t) { return num(t.take_profit, num(t.target, num(t.tp, null))); }
-  function riskMoney(t) {
-    const direct = num(t.risk_amount, num(t.risk_money, null));
-    if (direct !== null) return direct;
-    const balance = num(t.account_balance, num(qs('quickTradeBalance')?.value, num(qs('scanBalance')?.value, 10000))) || 10000;
-    const riskPct = num(t.risk_pct, 0.5) || 0.5;
-    return balance * (riskPct / 100);
-  }
+
   function precision(pair, value) {
     const p = String(pair || '').toUpperCase();
     if (p.includes('XAU') || p.includes('XAG')) return 2;
@@ -54,6 +47,14 @@
     if (p.includes('JPY')) return 0.01;
     return 0.0001;
   }
+  function riskMoney(t) {
+    const direct = num(t.risk_amount, num(t.risk_money, null));
+    if (direct !== null) return direct;
+    const balance = num(t.account_balance, num(qs('quickTradeBalance')?.value, num(qs('scanBalance')?.value, 10000))) || 10000;
+    const riskPct = num(t.risk_pct, 0.5) || 0.5;
+    return balance * (riskPct / 100);
+  }
+
   async function api(path, options = {}) {
     const res = await fetch(path, { headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
     const data = await res.json().catch(() => ({}));
@@ -70,22 +71,16 @@
       body.td-preview-enabled .agent-tab[data-tab="scanner"] { display: none !important; }
       body.td-preview-enabled .agent-tab[data-tab="trades"] { background: linear-gradient(180deg, #58a6ff, #2f81f7) !important; color: #031224 !important; box-shadow: 0 0 28px rgba(88,166,255,.22) !important; }
       body.td-preview-enabled #tab-trades { max-width: 1880px; margin: 0 auto; }
-      body.td-preview-enabled #tab-trades > .agent-card:has(#openTradesDetail) { display: none !important; }
-      body.td-preview-enabled #tab-trades > .agent-card:has(#tradeJournalPanel) { display: none !important; }
-      body.td-preview-enabled #tab-trades > .agent-card:has(#reviewResult) { display: none !important; }
+      body.td-preview-enabled #openTradesDetailCard,
+      body.td-preview-enabled #postTradeReviewsCard { display: none !important; }
       body.td-preview-enabled #agentChartPanel { padding: 16px !important; }
       body.td-preview-enabled #agentChartPanel .chart-head-row h2::after { content: ' - Trading Desk Preview'; color: #58a6ff; font-size: 12px; font-weight: 900; margin-left: 8px; }
       body.td-preview-enabled #agentChartPanel .chart-workspace {
-        display: grid !important;
-        grid-template-columns: minmax(560px, 1.25fr) minmax(360px, .72fr) minmax(300px, .52fr) !important;
-        grid-template-rows: auto auto !important;
+        grid-template-columns: minmax(0, 1.15fr) minmax(330px, .58fr) !important;
         gap: 14px !important;
         align-items: start !important;
       }
-      body.td-preview-enabled #agentChartPanel .chart-main-panel { grid-column: 1 !important; grid-row: 1 / span 2 !important; min-width: 0 !important; }
-      body.td-preview-enabled #agentChartPanel #tradingDeskScannerPanel { grid-column: 2 !important; grid-row: 1 / span 2 !important; min-width: 0 !important; }
-      body.td-preview-enabled #agentChartPanel #chartAccountPanel { grid-column: 3 !important; grid-row: 1 !important; }
-      body.td-preview-enabled #agentChartPanel #quickTradePanel { grid-column: 3 !important; grid-row: 2 !important; }
+      body.td-preview-enabled #agentChartPanel .chart-main-panel { min-width: 0 !important; }
       body.td-preview-enabled #agentChartPanel .chart-frame { min-height: 500px !important; }
       body.td-preview-enabled #agentChartPanel #agentLiveChart { height: 500px !important; }
       .td-scanner-panel, .td-mt4-panel, .td-dashboard-journal-card {
@@ -95,16 +90,15 @@
         box-shadow: 0 22px 60px rgba(0,0,0,.26);
         backdrop-filter: blur(12px) saturate(125%);
       }
-      .td-scanner-panel { padding: 14px; min-height: 500px; }
+      .td-scanner-panel { margin-top: 14px; padding: 14px; }
       .td-panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
       .td-panel-title { font-size: 16px; font-weight: 950; color: #f8fafc; letter-spacing: -.03em; }
       .td-panel-sub { color: var(--muted, #9fb0c7); font-size: 11px; margin-top: 3px; line-height: 1.35; }
       .td-panel-actions { display: flex; gap: 8px; align-items: center; }
-      .td-setup-list { display: grid; gap: 10px; }
+      .td-setup-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
       .td-setup-card {
-        position: relative;
         display: grid;
-        grid-template-columns: minmax(72px,.7fr) minmax(66px,.55fr) minmax(80px,.72fr) auto;
+        grid-template-columns: minmax(78px,.7fr) minmax(70px,.55fr) minmax(92px,.72fr) auto;
         gap: 10px;
         align-items: center;
         border: 1px solid rgba(148,163,184,.18);
@@ -123,7 +117,7 @@
       .td-level strong { display: block; color: #f8fafc; font-size: 11px; white-space: nowrap; }
       .td-trade-btn { min-height: 36px !important; padding: 7px 13px !important; font-size: 11px !important; border-radius: 10px !important; font-weight: 950 !important; }
       .td-rejected-mini { margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,.16); }
-      .td-rejected-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 8px; }
+      .td-rejected-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 9px; margin-top: 8px; }
       .td-reject-card { border: 1px solid rgba(248,81,73,.16); border-radius: 12px; padding: 10px; background: rgba(15,23,42,.55); min-width: 0; }
       .td-reject-card strong { display: block; color: #f8fafc; font-size: 13px; }
       .td-reject-card p { margin: 5px 0 0; font-size: 10px; color: #aebbd1; line-height: 1.35; overflow-wrap: anywhere; }
@@ -140,14 +134,12 @@
       .td-dashboard-journal-card { margin-top: 16px; padding: 14px; }
       .td-dashboard-journal-card .trade-table { font-size: 11px; }
       @media (max-width: 1450px) {
-        body.td-preview-enabled #agentChartPanel .chart-workspace { grid-template-columns: minmax(0,1fr) minmax(340px,.72fr) !important; }
-        body.td-preview-enabled #agentChartPanel #tradingDeskScannerPanel { grid-column: 2 !important; grid-row: 1 !important; }
-        body.td-preview-enabled #agentChartPanel #chartAccountPanel { grid-column: 2 !important; grid-row: 2 !important; }
-        body.td-preview-enabled #agentChartPanel #quickTradePanel { grid-column: 1 / -1 !important; grid-row: 3 !important; }
+        body.td-preview-enabled #agentChartPanel .chart-workspace { grid-template-columns: 1fr minmax(330px, .52fr) !important; }
+        body.td-preview-enabled #agentChartPanel .chart-frame { min-height: 390px !important; }
+        body.td-preview-enabled #agentChartPanel #agentLiveChart { height: 390px !important; }
       }
       @media (max-width: 1050px) {
         body.td-preview-enabled #agentChartPanel .chart-workspace { grid-template-columns: 1fr !important; }
-        body.td-preview-enabled #agentChartPanel .chart-main-panel, body.td-preview-enabled #agentChartPanel #tradingDeskScannerPanel, body.td-preview-enabled #agentChartPanel #chartAccountPanel, body.td-preview-enabled #agentChartPanel #quickTradePanel { grid-column: 1 !important; grid-row: auto !important; }
       }
     `;
     document.head.appendChild(style);
@@ -157,6 +149,13 @@
     document.body.classList.add('td-preview-enabled');
     const tradingTab = document.querySelector('.agent-tab[data-tab="trades"]');
     if (tradingTab) tradingTab.textContent = 'Trading Desk';
+  }
+
+  function hideOldCards() {
+    const openTrades = qs('openTradesDetail')?.closest('.agent-card');
+    if (openTrades) openTrades.id = 'openTradesDetailCard';
+    const reviews = qs('reviewResult')?.closest('.agent-card');
+    if (reviews) reviews.id = 'postTradeReviewsCard';
   }
 
   function moveJournalToDashboard() {
@@ -202,17 +201,16 @@
     if (!panel) return;
     const data = currentScanResults();
     const candidates = (data && data.candidates) || [];
-    const rejected = ((data && data.rejected) || []).slice(0, 2);
+    const rejected = ((data && data.rejected) || []).slice(0, 3);
     const approvedHtml = candidates.length
       ? candidates.slice(0, 4).map(candidateCard).join('')
-      : '<div class="muted small">Run a scan to bring approved setups into the Trading Desk.</div>';
+      : '<div class="muted small">Run a scan from here to bring approved setups into the Trading Desk.</div>';
     const rejectedHtml = rejected.length
       ? `<div class="td-rejected-grid">${rejected.map(r => `<div class="td-reject-card"><strong>${esc(pairId(r.pair))}</strong><p>${esc(r.rejection_reason || r.entry_reason || 'Rejected by scanner rules.')}</p></div>`).join('')}</div>`
       : '<div class="muted small">Rejected setups will appear here after a scan.</div>';
-    const status = data ? `Last scan: ${(new Date()).toLocaleTimeString()} - ${candidates.length} approved` : 'Live scanner preview';
     panel.innerHTML = `
       <div class="td-panel-head">
-        <div><div class="td-panel-title">AI Scanner / Approved Setups</div><div class="td-panel-sub">${esc(status)}</div></div>
+        <div><div class="td-panel-title">AI Scanner / Approved Setups</div><div class="td-panel-sub">Integrated scanner preview inside the Trading Desk</div></div>
         <div class="td-panel-actions"><button class="btn-secondary" id="tdRunScanBtn">Run Scan</button></div>
       </div>
       <div class="td-setup-list">${approvedHtml}</div>
@@ -220,8 +218,12 @@
     qs('tdRunScanBtn')?.addEventListener('click', async () => {
       const btn = qs('tdRunScanBtn');
       if (btn) btn.textContent = 'Scanning...';
-      try { if (typeof window.runScan === 'function') await window.runScan(); else if (typeof runScan === 'function') await runScan(); }
-      finally { setTimeout(renderTradingScannerPanel, 250); }
+      try {
+        if (typeof window.runScan === 'function') await window.runScan();
+        else if (typeof runScan === 'function') await runScan();
+      } finally {
+        setTimeout(renderTradingScannerPanel, 350);
+      }
     });
     qsa('[data-td-trade-pair]', panel).forEach(btn => {
       btn.addEventListener('click', () => {
@@ -233,23 +235,31 @@
   }
 
   function ensureTradingScannerPanel() {
-    const workspace = qs('agentChartPanel')?.querySelector('.chart-workspace');
-    if (!workspace || qs('tradingDeskScannerPanel')) return;
-    const panel = document.createElement('aside');
-    panel.id = 'tradingDeskScannerPanel';
-    panel.className = 'td-scanner-panel';
-    const account = qs('chartAccountPanel');
-    if (account) workspace.insertBefore(panel, account);
-    else workspace.appendChild(panel);
+    const tab = qs('tab-trades');
+    const chartPanel = qs('agentChartPanel');
+    if (!tab || !chartPanel) return false;
+    let panel = qs('tradingDeskScannerPanel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'tradingDeskScannerPanel';
+      panel.className = 'td-scanner-panel';
+      chartPanel.insertAdjacentElement('afterend', panel);
+    }
     renderTradingScannerPanel();
+    return true;
   }
 
-  function setupTradingPanel() {
-    const chartPanel = qs('agentChartPanel');
-    if (!chartPanel) return false;
-    ensureTradingScannerPanel();
-    ensureMt4Panel();
-    return true;
+  function patchRunScan() {
+    if (runScanPatched) return;
+    const fn = window.runScan || (typeof runScan === 'function' ? runScan : null);
+    if (typeof fn !== 'function') return;
+    runScanPatched = true;
+    const wrapped = async function tdPreviewRunScan(...args) {
+      const result = await fn.apply(this, args);
+      setTimeout(renderTradingScannerPanel, 150);
+      return result;
+    };
+    window.runScan = wrapped;
   }
 
   function closePriceForTrade(trade, quote) {
@@ -260,9 +270,7 @@
     return num(quote.price, num(quote.mid, entry(trade)));
   }
   function resultForTrade(t, current) {
-    if (!isOpen(t)) {
-      return { r: num(t.result_r, 0), money: num(t.result_money, num(t.pnl, 0)) };
-    }
+    if (!isOpen(t)) return { r: num(t.result_r, 0), money: num(t.result_money, num(t.pnl, 0)) };
     const ent = entry(t);
     const stop = sl(t);
     if (ent === null || stop === null || current === null || ent === stop) return { r: 0, money: 0 };
@@ -270,7 +278,6 @@
     const r = move / Math.abs(ent - stop);
     return { r, money: r * riskMoney(t) };
   }
-
   async function loadTradesForMt4() {
     const data = await api('/api/agent/trades');
     return Array.isArray(data) ? data : (data.trades || data.items || []);
@@ -282,7 +289,6 @@
     }));
     return Object.fromEntries(pairsWithQuotes);
   }
-
   function renderMt4Rows(trades, quotes) {
     const open = (trades || []).filter(isOpen);
     if (!open.length) return '<tr><td colspan="14" class="muted">No open positions.</td></tr>';
@@ -312,7 +318,6 @@
     const totalPipCls = totalPips >= 0 ? 'td-pos' : 'td-neg';
     return `${rows}<tfoot><tr><td colspan="4"><strong>Total</strong></td><td colspan="7">${open.length} position${open.length === 1 ? '' : 's'}</td><td class="${totalCls}">${money(totalMoney)}</td><td class="${totalPipCls}">${totalPips >= 0 ? '+' : ''}${totalPips.toFixed(1)}</td><td></td></tr></tfoot>`;
   }
-
   async function refreshMt4Panel() {
     const body = qs('tdMt4Rows');
     if (!body) return;
@@ -327,61 +332,64 @@
           btn.disabled = true;
           try { await post(`/api/agent/trades/${encodeURIComponent(id)}/quick-close`, { reason: 'Quick close from Trading Desk preview' }); }
           catch (e) { alert(`Close failed: ${e.message}`); }
-          finally { await refreshMt4Panel(); if (typeof window.loadAgentChart === 'function') window.loadAgentChart(); }
+          finally {
+            await refreshMt4Panel();
+            if (typeof window.loadAgentChart === 'function') window.loadAgentChart();
+          }
         });
       });
     } catch (e) {
       body.innerHTML = `<tr><td colspan="14" class="muted">Unable to load open positions: ${esc(e.message || e)}</td></tr>`;
     }
   }
-
   function ensureMt4Panel() {
     const tab = qs('tab-trades');
-    if (!tab || qs('tdMt4Panel')) return;
-    const panel = document.createElement('div');
-    panel.id = 'tdMt4Panel';
-    panel.className = 'td-mt4-panel';
-    panel.innerHTML = `
-      <div class="td-mt4-top">
-        <div><div class="td-panel-title">Open Positions (MT4-Style)</div><div class="td-panel-sub">Live paper trades - close-side P/L - manage positions</div></div>
-        <div class="td-panel-actions"><label class="muted small"><input type="checkbox" id="tdShowClosed"> Show closed positions</label><button class="btn-secondary" id="tdMt4Refresh">Refresh</button></div>
-      </div>
-      <div class="td-mt4-table-wrap"><table class="td-mt4-table"><thead><tr>
-        <th>Symbol</th><th>Ticket</th><th>Time</th><th>Type</th><th>Size</th><th>Price</th><th>SL</th><th>TP</th><th>Current</th><th>Swap</th><th>Commission</th><th>Profit (GBP)</th><th>Pips</th><th>Actions</th>
-      </tr></thead><tbody id="tdMt4Rows"><tr><td colspan="14" class="muted">Loading open positions...</td></tr></tbody></table></div>`;
-    tab.appendChild(panel);
-    qs('tdMt4Refresh')?.addEventListener('click', refreshMt4Panel);
+    const chartPanel = qs('agentChartPanel');
+    if (!tab || !chartPanel) return false;
+    if (!qs('tdMt4Panel')) {
+      const panel = document.createElement('div');
+      panel.id = 'tdMt4Panel';
+      panel.className = 'td-mt4-panel';
+      panel.innerHTML = `
+        <div class="td-mt4-top">
+          <div><div class="td-panel-title">Open Positions (MT4-Style)</div><div class="td-panel-sub">Live paper trades - close-side P/L - manage positions</div></div>
+          <div class="td-panel-actions"><button class="btn-secondary" id="tdMt4Refresh">Refresh</button></div>
+        </div>
+        <div class="td-mt4-table-wrap"><table class="td-mt4-table"><thead><tr>
+          <th>Symbol</th><th>Ticket</th><th>Time</th><th>Type</th><th>Size</th><th>Price</th><th>SL</th><th>TP</th><th>Current</th><th>Swap</th><th>Commission</th><th>Profit (GBP)</th><th>Pips</th><th>Actions</th>
+        </tr></thead><tbody id="tdMt4Rows"><tr><td colspan="14" class="muted">Loading open positions...</td></tr></tbody></table></div>`;
+      const scanner = qs('tradingDeskScannerPanel');
+      if (scanner) scanner.insertAdjacentElement('afterend', panel);
+      else chartPanel.insertAdjacentElement('afterend', panel);
+      qs('tdMt4Refresh')?.addEventListener('click', refreshMt4Panel);
+    }
     refreshMt4Panel();
     if (!mt4Timer) mt4Timer = setInterval(refreshMt4Panel, 15000);
+    return true;
   }
 
-  function patchScanRenderers() {
-    if (scannerPatched) return;
-    scannerPatched = true;
-    ['renderCandidates', 'renderRejected', 'renderNoSetup'].forEach(name => {
-      const original = window[name];
-      if (typeof original !== 'function') return;
-      window[name] = function patchedScannerRenderer(...args) {
-        const result = original.apply(this, args);
-        setTimeout(renderTradingScannerPanel, 80);
-        return result;
-      };
-    });
-  }
-
-  function initPreview() {
+  function setupTradingPreview() {
     installStyles();
     setupNav();
+    hideOldCards();
     moveJournalToDashboard();
-    patchScanRenderers();
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const ready = setupTradingPanel();
-      if (ready || Date.now() - start > 12000) clearInterval(timer);
-    }, 250);
-    if (!scannerTimer) scannerTimer = setInterval(renderTradingScannerPanel, 12000);
+    patchRunScan();
+    const scannerReady = ensureTradingScannerPanel();
+    const mt4Ready = ensureMt4Panel();
+    return scannerReady && mt4Ready;
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPreview);
-  else initPreview();
+  function start() {
+    setupTradingPreview();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const ready = setupTradingPreview();
+      if (ready && Date.now() - started > 2500) clearInterval(timer);
+      if (Date.now() - started > 20000) clearInterval(timer);
+    }, 350);
+    if (!scannerTimer) scannerTimer = setInterval(renderTradingScannerPanel, 10000);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
