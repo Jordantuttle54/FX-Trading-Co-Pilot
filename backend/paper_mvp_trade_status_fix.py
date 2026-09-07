@@ -92,13 +92,7 @@ _remove_routes("/api/agent/manage", {"POST"})
 async def agent_open_trades_status_fixed(user: str = Depends(current_user)):
     return {
         "open_trades": _open_trades_for_user(user),
-        "trading_allowed": {
-            "allowed": not KILL_SWITCH["active"],
-            "daily_loss_pct": 0.0,
-            "weekly_loss_pct": 0.0,
-            "daily_limit": DAILY_LIMIT,
-            "weekly_limit": WEEKLY_LIMIT,
-        },
+        "trading_allowed": base.trading_allowed(user),
         "kill_switch": KILL_SWITCH["active"],
         "storage_mode": storage_mode(),
     }
