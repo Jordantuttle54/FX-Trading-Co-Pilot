@@ -120,7 +120,15 @@ async def agent_execute_phase1(req: AgentExecutePhase1Request, user: str = Depen
     if base.KILL_SWITCH["active"]:
         raise HTTPException(status_code=403, detail=base.KILL_SWITCH["reason"] or "Kill switch active")
 
-    candidate = dict(req.candidate) if req.candidate and req.candidate.get("pair") == req.pair else compat._candidate_from_request(req)  # type: ignore[arg-type]
+    # Always price and validate on the server. This previously took the
+    # candidate the browser posted whenever its pair matched, so the client
+    # chose the entry, stop, target and risk - and supplied the
+    # "trade_candidate" status that was then checked to decide whether the
+    # trade was permitted. Nothing here verified any of it, and a candidate
+    # missing a field the execution layer needs crashed the request with a
+    # 500 rather than refusing it. Re-scoring means the setup has to still
+    # qualify at the moment the button is pressed.
+    candidate = compat._candidate_from_request(req)  # type: ignore[arg-type]
     if candidate.get("status") != "trade_candidate":
         raise HTTPException(status_code=422, detail={"message": "Paper trade blocked by current setup rules.", "candidate": candidate})
 

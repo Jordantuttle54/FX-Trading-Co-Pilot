@@ -41,6 +41,32 @@ log = logging.getLogger("fx")
 DATA_HEALTH: Dict[str, Any] = {"quotes_ok": None, "candles_ok": None, "last_error": "", "last_error_at": ""}
 
 
+def market_data_is_live() -> tuple:
+    """(ok, reason) - whether we currently have real broker prices.
+
+    A deployment with no market-data credentials still connects to the same
+    database as every other one, so it can write trades priced from invented
+    values into the real wallet. Preview builds on Vercel do not inherit
+    Production-scoped environment variables, which is exactly how that happens
+    by accident. Every path that opens a position checks this first.
+    """
+    if not oanda_configured():
+        return False, ("No market data provider is configured on this deployment, "
+                       "so prices here are invented. Trades cannot be opened.")
+    snap = snapshot()
+    provider = str(snap.get("provider") or "").lower()
+    if "synthetic" in provider or "failed" in provider:
+        detail = (snap.get("warnings") or [""])[0]
+        return False, f"Live market data is unavailable ({provider}). {detail}".strip()
+    return True, ""
+
+
+def require_live_market_data() -> None:
+    ok, reason = market_data_is_live()
+    if not ok:
+        raise HTTPException(status_code=503, detail=reason)
+
+
 def _note_data_failure(what: str, exc: Exception) -> None:
     DATA_HEALTH[what] = False
     DATA_HEALTH["last_error"] = f"{type(exc).__name__}: {exc}"

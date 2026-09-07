@@ -20,13 +20,38 @@ def secret_value() -> str:
 
 
 def passwordless_login_enabled() -> bool:
-    # Temporary convenience mode while the paper-trading app is still being built/tested.
-    # Set TEMP_PASSWORDLESS_LOGIN=false later to require AUTH_PASSCODE again.
-    return os.getenv("TEMP_PASSWORDLESS_LOGIN", "true").lower() in ("1", "true", "yes", "on")
+    """Whether anyone naming an allowed user can log in with no passcode.
+
+    This defaulted to ON, which on a public deployment means the allowlist is
+    the only thing between the internet and the account - and the allowlist
+    defaults to "Jake,Jordan". Fine while nothing was at stake; not something
+    to carry into live money. It now has to be switched on deliberately:
+    set TEMP_PASSWORDLESS_LOGIN=true to get the old behaviour back.
+    """
+    return os.getenv("TEMP_PASSWORDLESS_LOGIN", "false").lower() in ("1", "true", "yes", "on")
+
+
+PLACEHOLDER_SIGNING_KEY = "change-me-in-vercel"
 
 
 def signing_key() -> bytes:
-    return (os.getenv("AUTH_TOKEN_SECRET") or "change-me-in-vercel").encode("utf-8")
+    """The key session tokens are signed with.
+
+    The placeholder is public knowledge - it is in this file - so anything
+    signed with it can be forged by anyone. It is tolerated only in the
+    explicit development mode that also turns off passcodes; a deployment
+    posing as production without a real secret is a misconfiguration, and
+    failing loudly here beats handing out forgeable sessions.
+    """
+    configured = os.getenv("AUTH_TOKEN_SECRET", "").strip()
+    if configured:
+        return configured.encode("utf-8")
+    if passwordless_login_enabled():
+        return PLACEHOLDER_SIGNING_KEY.encode("utf-8")
+    raise HTTPException(
+        status_code=503,
+        detail="AUTH_TOKEN_SECRET is not set on this deployment, so sessions cannot be signed securely.",
+    )
 
 
 def sign(payload: str) -> str:

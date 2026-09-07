@@ -32,6 +32,7 @@ DESCRIPTIONS = {
     "test_goldcap.py": "gold position risk cap",
     "test_endpoint.py": "trade history repair endpoint",
     "test_pricing.py": "executable entry fills and backtest dealing costs",
+    "test_integrity.py": "trade-write guards, client-supplied data, and provenance",
     "test_notify.py": "alerting and the run watchdog",
     "test_stale.py": "market-closed detection",
     "test_cronauth.py": "scheduled-job authentication and its error messages",

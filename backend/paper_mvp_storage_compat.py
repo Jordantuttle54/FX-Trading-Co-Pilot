@@ -317,9 +317,22 @@ base.storage_mode = compat_storage_mode
 
 
 def _candidate_from_request(req: AgentExecuteCompatRequest) -> Dict[str, Any]:
-    candidate = dict(req.candidate) if req.candidate and req.candidate.get("pair") == req.pair else base.score_candidate(req.pair, req.account_balance, getattr(req, "fixed_units", None))
+    """Always price the trade on the server, from current market data.
+
+    This used to accept the candidate posted by the browser whenever its pair
+    matched, which meant the client chose the entry, stop, target and risk -
+    and supplied the "trade_candidate" status that was then checked to decide
+    whether the trade was allowed at all. Nothing on the server verified any
+    of it. Re-scoring here means the setup must still qualify at the moment
+    you press the button, and the fill is priced off the live book rather
+    than whatever the page happened to be showing.
+    """
+    base.require_live_market_data()
+    candidate = base.score_candidate(req.pair, req.account_balance, getattr(req, "fixed_units", None))
     if candidate.get("status") != "trade_candidate":
         raise HTTPException(status_code=422, detail={"message": "Paper trade blocked by current setup rules.", "candidate": candidate})
+    # A person pressed a button to open this, so it is theirs, not the agent's.
+    candidate["trade_origin"] = "scanner_manual_execute"
     return candidate
 
 

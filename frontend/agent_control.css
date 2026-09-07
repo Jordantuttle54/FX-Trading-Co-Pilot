@@ -59,3 +59,21 @@
     width: 100%;
   }
 }
+
+/* Data-source warning banner. Scoped to its own id so it never joins the
+   !important pile in the older stylesheets. */
+.data-source-banner {
+  margin: 0;
+  padding: 10px 18px;
+  background: #7f1d1d;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  border-bottom: 1px solid #991b1b;
+}
+.data-source-banner code {
+  background: rgba(0, 0, 0, 0.28);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
