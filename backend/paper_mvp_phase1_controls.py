@@ -191,7 +191,8 @@ async def agent_execute_phase1(req: AgentExecutePhase1Request, user: str = Depen
             str(trade["id"]),
         )
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
 
     return {
         "trade_id": trade["id"],
@@ -273,7 +274,8 @@ async def agent_manual_close_trade_phase1(trade_id: str, req: ManualCloseRequest
     try:
         compat.compat_add_audit(user, "manual_close", "closed", trade["close_reason"], str(trade.get("pair", "")), trade_id)
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
 
     return {"closed_trade": trade, "storage_mode": compat.compat_storage_mode()}
 
@@ -311,7 +313,8 @@ async def agent_reset_trades_phase1(req: ResetTradesRequest, user: str = Depends
     try:
         compat.compat_add_audit(user, "reset_test_data", "reset", f"Reset {len(rows_before)} paper trade row(s).", "", None)
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
 
     return {
         "reset": True,

@@ -170,7 +170,8 @@ def repair_user_trades(user: str, apply: bool = False) -> Dict[str, Any]:
                 None,
             )
         except Exception:
-            pass
+            # Never let a lost audit line break a trade - but never lose it quietly.
+            base.log.warning("Audit entry could not be written", exc_info=True)
 
     return {
         "applied": apply,
