@@ -307,6 +307,62 @@
     }
   }
 
+  /* ---- assemble the three columns ----------------------------------------
+   * The four panels are built by four different files: the chart and the
+   * running-P/L ledger by agent_chart.js, the ticket by agent_quick_trade.js,
+   * the scanner by agent.html. A CSS grid can only lay out its own children,
+   * so trading_desk.css can place them only once they are siblings inside
+   * .chart-workspace. This is the one function that makes them siblings.
+   *
+   * appendChild, not insertBefore against a reference node: the previous
+   * version assumed the ledger was already in the workspace and threw when it
+   * was not, taking the rest of start() down with it. Order here does not
+   * matter anyway - grid-template-areas decides what sits where, so the DOM
+   * order is free to be whatever arrives first.
+   */
+  function ensureBox(id, workspace) {
+    let box = qs(id);
+    if (!box) {
+      box = document.createElement('div');
+      box.id = id;
+    }
+    if (box.parentElement !== workspace) workspace.appendChild(box);
+    return box;
+  }
+
+  function placeWorkspacePanels() {
+    const workspace = document.querySelector('#tradeDesk .chart-workspace');
+    if (!workspace) return false;
+
+    // The scanner card itself keeps the middle column - that is where you set
+    // the balance and press Run Full Scan.
+    const scanner = qs('deskScanner');
+    if (scanner && scanner.parentElement !== workspace) workspace.appendChild(scanner);
+
+    // Results go in their own row under the chart. Stacked in the middle
+    // column they made one long narrow ribbon you had to scroll past the
+    // chart to read, while the wide space under the chart sat empty. Down
+    // here they lay out several across and the page simply gets longer as
+    // setups come in.
+    const results = ensureBox('deskScanResults', workspace);
+    ['candidatesSection', 'rejectedSection', 'noSetupSection'].forEach((id) => {
+      const el = qs(id);
+      if (el && el.parentElement !== results) results.appendChild(el);
+    });
+
+    // The ledger and the ticket share one grid cell rather than taking a row
+    // each. As two cells they set two row heights that the chart column had
+    // to match, which is what left the gap under the chart; as one cell the
+    // right-hand column is simply as tall as it needs to be.
+    const right = ensureBox('deskRightColumn', workspace);
+    ['chartAccountPanel', 'quickTradePanel'].forEach((id) => {
+      const el = qs(id);
+      if (el && el.parentElement !== right) right.appendChild(el);
+    });
+
+    return true;
+  }
+
   /* ---- lifecycle ---------------------------------------------------------- */
   function onTradeTab() {
     return !!document.querySelector('#tab-trades.active');
@@ -314,11 +370,19 @@
 
   function start() {
     if (!qs('deskPositionsPanel')) return;
+    placeWorkspacePanels();
     refresh();
     renderNewsGuard();
     if (!timer) {
       timer = setInterval(() => {
-        if (onTradeTab()) { refresh(); renderNewsGuard(); }
+        if (!onTradeTab()) return;
+        // The ticket and the ledger are injected by other files and may not
+        // exist yet the first time the tab opens. Re-asserting placement here
+        // adopts whatever has appeared since; it is a no-op once each panel is
+        // already in the workspace.
+        placeWorkspacePanels();
+        refresh();
+        renderNewsGuard();
       }, REFRESH_MS);
     }
   }

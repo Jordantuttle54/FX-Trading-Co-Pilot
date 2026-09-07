@@ -156,7 +156,26 @@
       .chart-trade-chip { border:1px solid var(--border); background:var(--bg3); border-radius:10px; padding:10px; font-size:12px; }
       .chart-trade-chip strong { display:block; margin-bottom:6px; }
       .chart-swatch { display:inline-block; width:10px; height:10px; border-radius:999px; margin-right:6px; vertical-align:-1px; }
-      .chart-account-panel { border:1px solid var(--border); background:linear-gradient(180deg, rgba(15,23,42,.92), rgba(7,13,24,.94)); border-radius:14px; padding:14px; min-height:520px; }
+      .chart-account-panel { border:1px solid var(--border); background:linear-gradient(180deg, rgba(15,23,42,.92), rgba(7,13,24,.94)); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+      .ledger-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+      .ledger-refresh { padding:5px 10px; font-size:11px; min-height:0; }
+      .ledger-rows { display:flex; flex-direction:column; gap:1px; max-height:330px; overflow-y:auto; background:var(--border); border:1px solid var(--border); border-radius:9px; }
+      .ledger-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; padding:7px 9px; background:var(--bg3,#1e2634); font-size:11.5px; }
+      .ledger-row.ledger-open { border-left:2px solid var(--accent); }
+      .ledger-main { display:flex; align-items:baseline; gap:6px; min-width:0; }
+      .ledger-pair { font-weight:800; font-size:12px; }
+      .ledger-side { font-size:9.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+      .ledger-side.buy { color:var(--green); }
+      .ledger-side.sell { color:var(--red); }
+      .ledger-units { color:var(--text-muted,#8b9ab0); font-size:10.5px; }
+      .ledger-prices { grid-column:1; font-family:ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums; color:var(--text-muted,#8b9ab0); font-size:11px; }
+      .ledger-pnl { grid-column:2; grid-row:1 / span 2; align-self:center; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+      .ledger-noprice { color:var(--red); }
+      .ledger-totals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+      .ledger-totals > div { display:flex; flex-direction:column; gap:2px; padding:7px 9px; border:1px solid var(--border); border-radius:8px; }
+      .ledger-totals span { font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted,#8b9ab0); }
+      .ledger-totals strong { font-size:14px; font-variant-numeric:tabular-nums; }
+      .ledger-note { font-size:11px; color:var(--red); line-height:1.45; }
       .chart-account-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:12px; }
       .chart-account-title { font-size:15px; font-weight:800; }
       .chart-account-sub { color:var(--text-muted); font-size:11px; margin-top:2px; }
@@ -580,37 +599,84 @@
     return (riskDistance ? move / riskDistance : 0) * tradeRiskMoney(trade);
   }
 
+  /* ---- running P/L -------------------------------------------------------
+   * Replaces the old six-cell "Paper Account" grid with a position-by-position
+   * ledger in the shape of MT4's Trade tab: one row per OPEN position showing
+   * what it is currently worth, then the account totals underneath.
+   *
+   * Open positions only, deliberately. Listing closed trades here made this a
+   * second copy of the journal, which already lives on the Dashboard and does
+   * the job better. What this panel is for is the question the journal cannot
+   * answer: what am I in right now, and what is it doing. Closed trades still
+   * reach the totals through Realised, which is what Balance is built from.
+   *
+   * Rows are priced on the side they would close at; a position whose quote is
+   * invented shows no figure rather than a plausible one, and is left out of
+   * Open P/L with a note saying so.
+   */
+  function ledgerRow(trade) {
+    const pair = trade.pair || activeChartMeta.pair;
+    const entry = entryValue(trade);
+    const exit = closeSidePrice(pair, trade.direction);
+    const pnl = estimateOpenTradeMoney(trade);
+    const priced = exit !== null;
+    const open = true;
+    const dir = String(trade.direction || '').toLowerCase();
+    const units = num(trade.position_units, null);
+
+    return `
+      <div class="ledger-row${open ? ' ledger-open' : ''}">
+        <div class="ledger-main">
+          <span class="ledger-pair">${escapeHtml(pair)}</span>
+          <span class="ledger-side ${escapeHtml(dir)}">${escapeHtml(dir)}</span>
+          <span class="ledger-units">${units === null ? '' : units.toLocaleString('en-GB')}</span>
+        </div>
+        <div class="ledger-prices">${formatPrice(entry, pair)} &rarr; ${
+          priced ? formatPrice(exit, pair) : '<span class="ledger-noprice">no price</span>'}</div>
+        <div class="ledger-pnl ${priced ? pnlClass(pnl) : 'muted'}">${
+          priced ? formatMoney(pnl) : '--'}</div>
+      </div>`;
+  }
+
   function renderPaperAccountPanel() {
     const panel = qs('chartAccountPanel');
     if (!panel) return;
+
     const startBalance = accountStartBalance();
     const closed = allTradesCache.filter(t => String(t.status || '').toLowerCase() === 'closed');
     const realised = closed.reduce((sum, t) => sum + realisedMoney(t), 0);
-    const openPnl = openTradesCache.reduce((sum, t) => sum + estimateOpenTradeMoney(t), 0);
+
+    let openPnl = 0;
+    let unpriced = 0;
+    openTradesCache.forEach((t) => {
+      const pair = t.pair || activeChartMeta.pair;
+      if (closeSidePrice(pair, t.direction) === null) { unpriced += 1; return; }
+      openPnl += estimateOpenTradeMoney(t);
+    });
+
     const balance = startBalance + realised;
     const equity = balance + openPnl;
-    const totalProfit = realised + openPnl;
-    const rows = openTradesCache.length ? openTradesCache.map(t => {
-      const pnl = estimateOpenTradeMoney(t);
-      const current = closeSidePrice(t.pair, t.direction);
-      return `
-        <div class="chart-position-row">
-          <div><div class="chart-position-name">${escapeHtml(tradeLabel(t))}</div><div class="chart-position-meta">${escapeHtml(t.pair || '')} ${escapeHtml(String(t.direction || '').toUpperCase())} | Current ${formatPrice(current, t.pair || activeChartMeta.pair)}</div></div>
-          <div class="chart-position-pnl ${pnlClass(pnl)}">${formatMoney(pnl)}</div>
-        </div>`;
-    }).join('') : '<div class="muted small">No open paper positions.</div>';
+
+    const rows = openTradesCache;
+
     panel.innerHTML = `
-      <div class="chart-account-top"><div><div class="chart-account-title">Paper Account</div><div class="chart-account-sub">Cached live estimate, paper mode only</div></div><button class="btn-secondary" style="font-size:11px;padding:6px 10px" onclick="refreshAgentAccountPanel()">Refresh</button></div>
-      <div class="chart-money-grid">
-        <div class="chart-money-cell"><div class="chart-money-label">Deposit</div><div class="chart-money-value">${formatMoney(startBalance)}</div></div>
-        <div class="chart-money-cell"><div class="chart-money-label">Balance</div><div class="chart-money-value">${formatMoney(balance)}</div></div>
-        <div class="chart-money-cell"><div class="chart-money-label">Realised Profit</div><div class="chart-money-value ${pnlClass(realised)}">${formatMoney(realised)}</div></div>
-        <div class="chart-money-cell"><div class="chart-money-label">Open P&L</div><div class="chart-money-value ${pnlClass(openPnl)}">${formatMoney(openPnl)}</div></div>
-        <div class="chart-money-cell"><div class="chart-money-label">Equity</div><div class="chart-money-value ${pnlClass(equity - startBalance)}">${formatMoney(equity)}</div></div>
-        <div class="chart-money-cell"><div class="chart-money-label">Total Profit</div><div class="chart-money-value ${pnlClass(totalProfit)}">${formatMoney(totalProfit)}</div></div>
+      <div class="ledger-head">
+        <div>
+          <div class="chart-account-title">Running P/L</div>
+          <div class="chart-account-sub">${openTradesCache.length} open position${openTradesCache.length === 1 ? '' : 's'}</div>
+        </div>
+        <button class="btn-secondary ledger-refresh" onclick="refreshAgentAccountPanel()">Refresh</button>
       </div>
-      <div class="chart-position-list">${rows}</div>
-      <div class="chart-account-note">Open P&L updates from the latest chart tick and cached open trades. Use Refresh after opening/closing trades.</div>`;
+      <div class="ledger-rows">${
+        rows.length ? rows.map(ledgerRow).join('')
+                    : '<div class="muted small">No open positions.</div>'}</div>
+      <div class="ledger-totals">
+        <div><span>Realised</span><strong class="${pnlClass(realised)}">${formatMoney(realised)}</strong></div>
+        <div><span>Open P/L</span><strong class="${pnlClass(openPnl)}">${formatMoney(openPnl)}</strong></div>
+        <div><span>Balance</span><strong>${formatMoney(balance)}</strong></div>
+        <div><span>Equity</span><strong>${formatMoney(equity)}</strong></div>
+      </div>
+      ${unpriced ? `<div class="ledger-note">${unpriced} open position${unpriced === 1 ? '' : 's'} could not be priced and ${unpriced === 1 ? 'is' : 'are'} excluded from Open P/L.</div>` : ''}`;
   }
 
   async function loadPaperAccountPanel(force = false) {

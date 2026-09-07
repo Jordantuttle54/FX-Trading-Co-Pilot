@@ -13,9 +13,93 @@
   gap: 18px;
 }
 
-/* The scanner sits under the chart at full width rather than beside it, so
-   six pairs fit across without either being cramped. */
-#tradeDesk > #deskScanner { min-width: 0; }
+/* ---- the working row: chart | scanner | account + ticket ----------------
+ * One definition, here, for the whole row. Three other stylesheets used to
+ * place these with !important and they disagreed, which is why every earlier
+ * attempt to move something produced a different broken layout. Those rules
+ * are retired (see the note in agent_quick_trade.js); this is the only grid.
+ *
+ * The chart takes the space because it is what you read; the scanner needs
+ * enough width for entry/SL/TP/RR to sit on one line; the ticket is the
+ * narrowest because it is a form.
+ */
+#tradeDesk .chart-workspace {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.85fr)
+    minmax(320px, 1fr)
+    minmax(300px, 0.85fr);
+  grid-template-areas:
+    "chart   scanner right"
+    "results results right";
+  gap: 14px;
+  align-items: start;
+}
+#tradeDesk .chart-workspace > .chart-main-panel { grid-area: chart; min-width: 0; }
+#tradeDesk .chart-workspace > #deskScanner { grid-area: scanner; min-width: 0; }
+#tradeDesk .chart-workspace > #deskScanResults { grid-area: results; min-width: 0; }
+#tradeDesk .chart-workspace > #deskRightColumn { grid-area: right; min-width: 0; }
+
+/* One cell, both panels, ticket first.
+ *
+ * The ledger and the ticket used to be two grid cells, which meant they set
+ * two row heights the chart column had to match - the reason a screen with
+ * nothing to show still left several hundred pixels of empty card under the
+ * chart. Stacked in a single cell, this column is just as tall as its
+ * contents and the row under the chart is free for scan results.
+ *
+ * The order is set here rather than in the DOM because agent_quick_trade.js
+ * re-inserts the ticket next to the ledger whenever it runs; ordering the
+ * flex line survives that. */
+#tradeDesk #deskRightColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+#tradeDesk #deskRightColumn > #quickTradePanel { order: 1; margin: 0; }
+#tradeDesk #deskRightColumn > #chartAccountPanel { order: 2; margin: 0; }
+#tradeDesk #deskRightColumn > * { flex: 0 0 auto; }
+
+/* Results sit under the chart and use its width: several setups across
+   instead of one long ribbon down the middle column. Nothing is capped or
+   scrolled - a scan that returns more just makes the page longer, which is
+   what a scan finishing should do. */
+#tradeDesk #deskScanResults {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+  align-items: start;
+}
+/* Approved setups get the full width; rejected and no-setup share the row
+   below. They were two full-width blocks each holding a couple of narrow
+   cards against a lot of empty space, which pushed everything worth reading
+   further down the page. They are both "why not" - one row is enough. */
+#tradeDesk #deskScanResults > #candidatesSection { grid-column: 1 / -1; }
+
+/* Expanding the chart drops everything else below it. */
+#tradeDesk #agentChartPanel.chart-expanded .chart-workspace {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "chart" "scanner" "results" "right";
+}
+
+@media (max-width: 1500px) {
+  #tradeDesk .chart-workspace {
+    grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr);
+    grid-template-areas:
+      "chart   right"
+      "scanner right"
+      "results results";
+  }
+}
+
+@media (max-width: 1024px) {
+  #tradeDesk .chart-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "chart" "right" "scanner" "results";
+  }
+}
 
 #tradeDesk .desk-card-head {
   display: flex;
@@ -142,7 +226,13 @@
  * retired because it was written to lay out a whole tab. These rules style the
  * same classes for a panel that sits inside the desk.
  */
-#deskScanner { display: grid; gap: 14px; min-width: 0; }
+/* Flex column with children pinned at their natural height. Not a grid: a grid
+ * container that ever gets a definite height shrinks its auto rows to fit
+ * instead of overflowing, and .agent-card's overflow:hidden then clips what is
+ * left. That is how the scan card once came out 34px tall - title only, with
+ * the balance, unit size and Run Full Scan button cut off and unreachable. */
+#deskScanner { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#deskScanner > * { flex: 0 0 auto; }
 #deskScanner .agent-card { margin: 0; }
 
 #deskScanner .scanner-controls {
@@ -160,54 +250,54 @@
 }
 #deskScanner .scanner-controls input { min-height: 36px; }
 
-#deskScanner .candidates-grid,
-#deskScanner #candidatesList {
+#tradeDesk .candidates-grid,
+#tradeDesk #candidatesList {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  gap: 10px;
 }
 
-#deskScanner .scanner-approved-card {
+#tradeDesk .scanner-approved-card {
   display: grid;
-  gap: 9px;
-  padding: 14px;
+  gap: 7px;
+  padding: 11px 12px;
   border: 1px solid var(--border, #2a3547);
   border-radius: 10px;
   background: var(--bg3, #1e2634);
   min-width: 0;
 }
-#deskScanner .scanner-card-main {
+#tradeDesk .scanner-card-main {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
 }
-#deskScanner .scanner-card-pair { font-size: 15px; font-weight: 700; }
-#deskScanner .scanner-confidence { font-size: 13px; color: var(--text-muted, #8b9ab0); }
-#deskScanner .scanner-levels {
+#tradeDesk .scanner-card-pair { font-size: 14px; font-weight: 700; margin: 0; }
+#tradeDesk .scanner-confidence { font-size: 12px; color: var(--text-muted, #8b9ab0); }
+#tradeDesk .scanner-levels {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
-#deskScanner .scanner-meta,
-#deskScanner .scanner-thesis {
-  font-size: 12px;
+#tradeDesk .scanner-meta,
+#tradeDesk .scanner-thesis {
+  font-size: 11.5px;
   color: var(--text-muted, #8b9ab0);
-  line-height: 1.5;
+  line-height: 1.45;
 }
-#deskScanner .scanner-star { color: var(--accent, #f0b429); }
-#deskScanner .scanner-place-btn { width: 100%; margin-top: 2px; }
+#tradeDesk .scanner-star { color: var(--accent, #f0b429); }
+#tradeDesk .scanner-place-btn { width: 100%; margin-top: 1px; padding: 7px 12px; font-size: 12px; }
 
-#deskScanner .rejected-list,
-#deskScanner .no-setup-list {
+#tradeDesk .rejected-list,
+#tradeDesk .no-setup-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 8px;
 }
-#deskScanner .section-heading { margin: 4px 0 10px; font-size: 14px; }
+#tradeDesk .section-heading { margin: 4px 0 10px; font-size: 14px; }
 
 @media (max-width: 620px) {
   #deskScanner .scanner-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -215,36 +305,36 @@
 
 /* Section chrome (Approved / Rejected / No setup). agent_scanner_polish.js
    builds these headers; their styling came from the sheet now retired. */
-#deskScanner .scanner-section-head {
+#tradeDesk .scanner-section-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin: 4px 0 12px;
+  margin: 2px 0 9px;
 }
-#deskScanner .scanner-section-title {
-  font-size: 15px;
+#tradeDesk .scanner-section-title {
+  font-size: 14px;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 8px;
 }
-#deskScanner .scanner-section-sub {
+#tradeDesk .scanner-section-sub {
   font-size: 12px;
   color: var(--text-muted, #8b9ab0);
   margin-top: 3px;
 }
-#deskScanner .scanner-section-icon { font-size: 13px; }
-#deskScanner .scanner-icon-approved { color: var(--green, #3fb950); }
-#deskScanner .scanner-icon-rejected { color: var(--red, #f85149); }
-#deskScanner .scanner-view-btn {
-  padding: 6px 12px;
-  font-size: 12px;
+#tradeDesk .scanner-section-icon { font-size: 13px; }
+#tradeDesk .scanner-icon-approved { color: var(--green, #3fb950); }
+#tradeDesk .scanner-icon-rejected { color: var(--red, #f85149); }
+#tradeDesk .scanner-view-btn {
+  padding: 5px 10px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
-#deskScanner .scanner-dir {
+#tradeDesk .scanner-dir {
   display: inline-block;
   width: fit-content;
   padding: 2px 8px;
@@ -253,71 +343,87 @@
   font-weight: 700;
   letter-spacing: 0.05em;
 }
-#deskScanner .scanner-dir.buy { color: var(--green, #3fb950); background: rgba(63, 185, 80, 0.14); }
-#deskScanner .scanner-dir.sell { color: var(--red, #f85149); background: rgba(248, 81, 73, 0.14); }
+#tradeDesk .scanner-dir.buy { color: var(--green, #3fb950); background: rgba(63, 185, 80, 0.14); }
+#tradeDesk .scanner-dir.sell { color: var(--red, #f85149); background: rgba(248, 81, 73, 0.14); }
 
-#deskScanner .scanner-confidence strong { font-size: 20px; display: block; line-height: 1.1; }
-#deskScanner .scanner-confidence span,
-#deskScanner .scanner-meta span,
-#deskScanner .scanner-levels span {
+#tradeDesk .scanner-confidence strong { font-size: 20px; display: block; line-height: 1.1; }
+#tradeDesk .scanner-confidence span,
+#tradeDesk .scanner-meta span,
+#tradeDesk .scanner-levels span {
   display: block;
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-muted, #8b9ab0);
 }
-#deskScanner .scanner-meta strong,
-#deskScanner .scanner-levels strong { font-size: 12.5px; font-weight: 600; }
-#deskScanner .scanner-meta .up { color: var(--green, #3fb950); }
-#deskScanner .scanner-meta .down { color: var(--red, #f85149); }
-#deskScanner .scanner-star { font-size: 15px; line-height: 1; }
-#deskScanner .scanner-card-pair { margin: 0; }
+#tradeDesk .scanner-meta strong,
+#tradeDesk .scanner-levels strong { font-size: 12.5px; font-weight: 600; }
+#tradeDesk .scanner-meta .up { color: var(--green, #3fb950); }
+#tradeDesk .scanner-meta .down { color: var(--red, #f85149); }
+#tradeDesk .scanner-star { font-size: 15px; line-height: 1; }
+#tradeDesk .scanner-card-pair { margin: 0; }
 
-/* Rejected / no-setup cards. Compact on purpose: these are the ones you skim
-   past, so they get less weight than an approved setup, not the same. */
-#deskScanner .scanner-reject-card {
+/* Rejected / no-setup cards. These are the ones you skim past: pair, how
+   confident, and the one line saying why not. Narrow enough that a scan's
+   worth of them sits on a single row instead of running down the page.
+
+   Three things are hidden rather than shrunk. The sparkline is the same
+   hardcoded nine-point polyline on every card - it is not that pair's price,
+   so it is decoration wearing the clothes of data, and at this size it would
+   be a smudge either way. The divider and the "Reason" label then cost two
+   more rows to introduce a sentence that introduces itself. */
+#tradeDesk .scanner-reject-card {
   display: grid;
-  gap: 7px;
-  padding: 12px;
+  gap: 3px;
+  padding: 8px 10px;
   border: 1px solid var(--border, #2a3547);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg2, #161d29);
   min-width: 0;
 }
-#deskScanner .scanner-reject-top {
+#tradeDesk .scanner-reject-card .scanner-sparkline,
+#tradeDesk .scanner-reject-card .scanner-reject-divider,
+#tradeDesk .scanner-reject-card .scanner-reason-label { display: none; }
+#tradeDesk .scanner-reject-card p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted, #8b9ab0);
+}
+#tradeDesk .scanner-reject-top {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
-#deskScanner .scanner-reject-x {
+#tradeDesk .scanner-reject-x {
   color: var(--red, #f85149);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
 }
-#deskScanner .scanner-reject-pair { font-size: 13.5px; font-weight: 700; }
-#deskScanner .scanner-reject-score {
+#tradeDesk .scanner-reject-pair { font-size: 12.5px; font-weight: 700; }
+#tradeDesk .scanner-reject-score {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted, #8b9ab0);
   font-variant-numeric: tabular-nums;
 }
-#deskScanner .scanner-reject-score strong { color: var(--text, #e6edf6); }
-#deskScanner .scanner-reject-trend {
-  font-size: 11.5px;
+#tradeDesk .scanner-reject-score strong { color: var(--text, #e6edf6); }
+#tradeDesk .scanner-reject-trend {
+  font-size: 10.5px;
   color: var(--text-muted, #8b9ab0);
 }
-#deskScanner .scanner-sparkline {
-  height: 26px;
+#tradeDesk .scanner-sparkline {
+  height: 18px;
   opacity: 0.55;
 }
-#deskScanner .scanner-sparkline svg { width: 100%; height: 100%; display: block; }
-#deskScanner .scanner-reject-divider {
+#tradeDesk .scanner-sparkline svg { width: 100%; height: 100%; display: block; }
+#tradeDesk .scanner-reject-divider {
   height: 1px;
   background: var(--border, #2a3547);
   margin: 1px 0;
 }
-#deskScanner .scanner-reason-label {
+#tradeDesk .scanner-reason-label {
   font-size: 9.5px;
   letter-spacing: 0.07em;
   text-transform: uppercase;
