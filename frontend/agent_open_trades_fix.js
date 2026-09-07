@@ -88,7 +88,12 @@
         }
 
         @media (min-width: 1181px) {
-          #tab-trades #agentChartPanel {
+          /* Retired: this made #agentChartPanel a two-column grid and put the
+             workspace in the narrow right column, leaving the three-column
+             layout inside it 542px to work with - so its chart column
+             computed to 0px wide. The card is a plain block again and
+             trading_desk.css owns the columns. */
+          #tab-trades-legacy #agentChartPanel {
             display: grid !important;
             grid-template-columns: minmax(0, 1.42fr) minmax(390px, .88fr) !important;
             grid-template-rows: auto auto auto !important;
@@ -98,8 +103,6 @@
           }
 
           #tab-trades #agentChartPanel .chart-head-row {
-            grid-column: 1 !important;
-            grid-row: 1 !important;
             margin: 0 !important;
             align-items: flex-start !important;
           }
@@ -115,8 +118,6 @@
           }
 
           #tab-trades #agentChartPanel .chart-toolbar {
-            grid-column: 1 !important;
-            grid-row: 2 !important;
             display: flex !important;
             flex-wrap: wrap !important;
             gap: 8px !important;
@@ -141,7 +142,7 @@
             font-size: 12px !important;
           }
 
-          #tab-trades #agentChartPanel .chart-workspace {
+          #tab-trades-legacy #agentChartPanel .chart-workspace {
             grid-column: 1 !important;
             grid-row: 3 !important;
             display: block !important;
@@ -154,7 +155,7 @@
             width: 100% !important;
           }
 
-          #tab-trades #agentChartPanel .chart-right-rail {
+          #tab-trades-legacy #agentChartPanel .chart-right-rail {
             grid-column: 2 !important;
             grid-row: 1 / span 3 !important;
             display: grid !important;
@@ -279,13 +280,13 @@
             height: 330px !important;
           }
 
-          #tab-trades #agentChartPanel.chart-expanded {
+          #tab-trades-legacy #agentChartPanel.chart-expanded {
             grid-template-columns: 1fr !important;
           }
 
-          #tab-trades #agentChartPanel.chart-expanded .chart-head-row,
-          #tab-trades #agentChartPanel.chart-expanded .chart-toolbar,
-          #tab-trades #agentChartPanel.chart-expanded .chart-workspace {
+          #tab-trades-legacy #agentChartPanel.chart-expanded .chart-head-row,
+          #tab-trades-legacy #agentChartPanel.chart-expanded .chart-toolbar,
+          #tab-trades-legacy #agentChartPanel.chart-expanded .chart-workspace {
             grid-column: 1 !important;
           }
 
@@ -331,29 +332,27 @@
     }
   }
 
-  function ensureRightRail(panel) {
-    if (!panel) return;
-    const accountPanel = qs('chartAccountPanel');
-    const quickPanel = qs('quickTradePanel');
-    if (!accountPanel && !quickPanel) return;
-
-    let rail = panel.querySelector('.chart-right-rail');
-    if (!rail) {
-      rail = document.createElement('aside');
-      rail.className = 'chart-right-rail';
-      panel.appendChild(rail);
-    }
-
-    if (accountPanel && accountPanel.parentElement !== rail) rail.appendChild(accountPanel);
-    if (quickPanel && quickPanel.parentElement !== rail) rail.appendChild(quickPanel);
-  }
+  /* The right rail is retired.
+   *
+   * It used to lift the running-P/L panel and the trade ticket out of
+   * .chart-workspace and into an aside of its own, which made the two-column
+   * cockpit this file was written for. The Trade tab is now a three-column
+   * grid - chart, scanner, right column - laid out by trading_desk.css, and a
+   * CSS grid can only place elements that are its own children. Moving those
+   * two panels out of the workspace therefore removed them from the grid
+   * entirely: the columns silently collapsed to one.
+   *
+   * Placement now lives in exactly one place, placeWorkspacePanels() in
+   * trading_desk.js, so there is a single answer to "what puts this panel
+   * here". Nothing calls the rail any more; the selectors above are scoped to
+   * #tab-trades-legacy and are inert.
+   */
 
   function applyCockpitLayout() {
     const panel = qs('agentChartPanel');
     if (!panel) return;
     injectCockpitStyles();
     moveExpandButton(panel);
-    ensureRightRail(panel);
   }
 
   function start() {

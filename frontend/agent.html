@@ -89,33 +89,14 @@
       </div>
     </div>
 
-    <div class="dashboard-row2">
+    <!-- Open trades belong with the top group: current state, not review. -->
+    <div class="dashboard-open-row">
       <div class="agent-card dashboard-open-trades-card">
         <h2>Open Trades</h2>
         <div id="openTradesPanel">Loading...</div>
       </div>
-      <div class="agent-card dashboard-audit-card">
-        <h2>Confidence Audit Log</h2>
-        <div id="auditLogPanel" class="audit-log">Loading...</div>
-        <button class="btn-secondary" onclick="loadAuditLog()">Refresh Log</button>
-      </div>
     </div>
 
-    <div class="dashboard-market-row">
-      <div class="agent-card">
-        <h2>Trading Window &middot; London</h2>
-        <div class="london-clock">
-          <div class="clock-label">London Time</div>
-          <div class="clock-display" id="londonClock">--:--</div>
-          <div id="windowStatus" class="window-status">--</div>
-          <div class="window-info">Active window: 07:00 - 11:00 London time</div>
-        </div>
-      </div>
-      <div class="agent-card">
-        <h2>Upcoming News Events</h2>
-        <div id="upcomingNewsPanel">Loading...</div>
-      </div>
-    </div>
     <div class="dashboard-review-row">
       <div class="agent-card" id="originSplitCard">
         <div class="desk-card-head">
@@ -143,6 +124,28 @@
         <button class="btn-secondary" onclick="loadAllTrades()">Refresh</button>
       </div>
       <div id="tradeJournalPanel" class="trade-journal">Loading...</div>
+    </div>
+
+    <div class="agent-card dashboard-audit-card">
+      <h2>Confidence Audit Log</h2>
+      <div id="auditLogPanel" class="audit-log">Loading...</div>
+      <button class="btn-secondary" onclick="loadAuditLog()">Refresh Log</button>
+    </div>
+
+    <div class="dashboard-market-row">
+      <div class="agent-card">
+        <h2>Trading Window &middot; London</h2>
+        <div class="london-clock">
+          <div class="clock-label">London Time</div>
+          <div class="clock-display" id="londonClock">--:--</div>
+          <div id="windowStatus" class="window-status">--</div>
+          <div class="window-info">Active window: 07:00 - 11:00 London time</div>
+        </div>
+      </div>
+      <div class="agent-card">
+        <h2>Upcoming News Events</h2>
+        <div id="upcomingNewsPanel">Loading...</div>
+      </div>
     </div>
   </section>
 

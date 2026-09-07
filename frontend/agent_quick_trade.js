@@ -145,20 +145,20 @@
         justify-content: center !important;
         white-space: nowrap !important;
       }
-      #tab-trades #agentChartPanel .chart-workspace {
+      #tab-trades-legacy #agentChartPanel .chart-workspace {
         display: grid !important;
         grid-template-columns: minmax(0, 1.5fr) minmax(348px, .92fr) !important;
         grid-template-rows: auto auto !important;
         gap: 10px !important;
         align-items: start !important;
       }
-      #tab-trades #agentChartPanel .chart-main-panel {
+      #tab-trades-legacy #agentChartPanel .chart-main-panel {
         grid-column: 1 !important;
         grid-row: 1 / span 2 !important;
         min-width: 0 !important;
         align-self: start !important;
       }
-      #tab-trades #agentChartPanel #chartAccountPanel {
+      #tab-trades-legacy #agentChartPanel #chartAccountPanel {
         grid-column: 2 !important;
         grid-row: 1 !important;
         min-height: 0 !important;
@@ -169,7 +169,7 @@
         width: 100% !important;
         align-self: start !important;
       }
-      #tab-trades #agentChartPanel #quickTradePanel {
+      #tab-trades-legacy #agentChartPanel #quickTradePanel {
         grid-column: 2 !important;
         grid-row: 2 !important;
         margin: 0 !important;
@@ -185,10 +185,10 @@
       #tab-trades #agentChartPanel #agentLiveChart {
         height: 330px !important;
       }
-      #tab-trades #agentChartPanel.chart-expanded .chart-workspace {
+      #tab-trades-legacy #agentChartPanel.chart-expanded .chart-workspace {
         grid-template-columns: 1fr !important;
       }
-      #tab-trades #agentChartPanel.chart-expanded .chart-main-panel {
+      #tab-trades-legacy #agentChartPanel.chart-expanded .chart-main-panel {
         grid-column: 1 !important;
         grid-row: 1 !important;
       }
@@ -375,12 +375,12 @@
         background: rgba(127,29,29,.35) !important;
       }
       @media (max-width: 1180px) {
-        #tab-trades #agentChartPanel .chart-workspace {
+        #tab-trades-legacy #agentChartPanel .chart-workspace {
           grid-template-columns: 1fr !important;
         }
-        #tab-trades #agentChartPanel .chart-main-panel,
-        #tab-trades #agentChartPanel #chartAccountPanel,
-        #tab-trades #agentChartPanel #quickTradePanel {
+        #tab-trades-legacy #agentChartPanel .chart-main-panel,
+        #tab-trades-legacy #agentChartPanel #chartAccountPanel,
+        #tab-trades-legacy #agentChartPanel #quickTradePanel {
           grid-column: 1 !important;
           grid-row: auto !important;
         }

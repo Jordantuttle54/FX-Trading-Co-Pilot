@@ -307,6 +307,29 @@
     }
   }
 
+  /* ---- assemble the three columns ----------------------------------------
+   * The four panels are built by four different files: the chart and the
+   * running-P/L ledger by agent_chart.js, the ticket by agent_quick_trade.js,
+   * the scanner by agent.html. A CSS grid can only lay out its own children,
+   * so trading_desk.css can place them only once they are siblings inside
+   * .chart-workspace. This is the one function that makes them siblings.
+   *
+   * appendChild, not insertBefore against a reference node: the previous
+   * version assumed the ledger was already in the workspace and threw when it
+   * was not, taking the rest of start() down with it. Order here does not
+   * matter anyway - grid-template-areas decides what sits where, so the DOM
+   * order is free to be whatever arrives first.
+   */
+  function placeWorkspacePanels() {
+    const workspace = document.querySelector('#tradeDesk .chart-workspace');
+    if (!workspace) return false;
+    ['deskScanner', 'chartAccountPanel', 'quickTradePanel'].forEach((id) => {
+      const el = qs(id);
+      if (el && el.parentElement !== workspace) workspace.appendChild(el);
+    });
+    return true;
+  }
+
   /* ---- lifecycle ---------------------------------------------------------- */
   function onTradeTab() {
     return !!document.querySelector('#tab-trades.active');
@@ -314,11 +337,19 @@
 
   function start() {
     if (!qs('deskPositionsPanel')) return;
+    placeWorkspacePanels();
     refresh();
     renderNewsGuard();
     if (!timer) {
       timer = setInterval(() => {
-        if (onTradeTab()) { refresh(); renderNewsGuard(); }
+        if (!onTradeTab()) return;
+        // The ticket and the ledger are injected by other files and may not
+        // exist yet the first time the tab opens. Re-asserting placement here
+        // adopts whatever has appeared since; it is a no-op once each panel is
+        // already in the workspace.
+        placeWorkspacePanels();
+        refresh();
+        renderNewsGuard();
       }, REFRESH_MS);
     }
   }

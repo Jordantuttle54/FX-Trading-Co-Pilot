@@ -13,9 +13,64 @@
   gap: 18px;
 }
 
-/* The scanner sits under the chart at full width rather than beside it, so
-   six pairs fit across without either being cramped. */
-#tradeDesk > #deskScanner { min-width: 0; }
+/* ---- the working row: chart | scanner | account + ticket ----------------
+ * One definition, here, for the whole row. Three other stylesheets used to
+ * place these with !important and they disagreed, which is why every earlier
+ * attempt to move something produced a different broken layout. Those rules
+ * are retired (see the note in agent_quick_trade.js); this is the only grid.
+ *
+ * The chart takes the space because it is what you read; the scanner needs
+ * enough width for entry/SL/TP/RR to sit on one line; the ticket is the
+ * narrowest because it is a form.
+ */
+#tradeDesk .chart-workspace {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.85fr)
+    minmax(320px, 1.05fr)
+    minmax(280px, 0.8fr);
+  grid-template-areas:
+    "chart scanner account"
+    "chart scanner ticket";
+  gap: 14px;
+  align-items: start;
+}
+#tradeDesk .chart-workspace > .chart-main-panel { grid-area: chart; min-width: 0; }
+#tradeDesk .chart-workspace > #deskScanner { grid-area: scanner; min-width: 0; align-self: stretch; }
+#tradeDesk .chart-workspace > #chartAccountPanel { grid-area: account; min-width: 0; margin: 0; }
+#tradeDesk .chart-workspace > #quickTradePanel { grid-area: ticket; min-width: 0; margin: 0; }
+
+/* The scanner column scrolls rather than stretching the row to the height of
+   however many setups came back. */
+#tradeDesk .chart-workspace > #deskScanner {
+  max-height: 760px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Expanding the chart drops the other three below it. */
+#tradeDesk #agentChartPanel.chart-expanded .chart-workspace {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "chart" "scanner" "account" "ticket";
+}
+
+@media (max-width: 1500px) {
+  #tradeDesk .chart-workspace {
+    grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr);
+    grid-template-areas:
+      "chart account"
+      "chart ticket"
+      "scanner scanner";
+  }
+  #tradeDesk .chart-workspace > #deskScanner { max-height: none; overflow-y: visible; }
+}
+
+@media (max-width: 1024px) {
+  #tradeDesk .chart-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "chart" "account" "ticket" "scanner";
+  }
+}
 
 #tradeDesk .desk-card-head {
   display: flex;
@@ -142,7 +197,17 @@
  * retired because it was written to lay out a whole tab. These rules style the
  * same classes for a panel that sits inside the desk.
  */
-#deskScanner { display: grid; gap: 14px; min-width: 0; }
+/* Flex column, not a grid, and every child pinned at its natural height.
+ *
+ * This is load-bearing. The column above caps the scanner at 760px and lets it
+ * scroll. A grid container with a definite max-height shrinks its auto rows to
+ * fit that height instead of overflowing - so the four sections were squeezed,
+ * and .agent-card's overflow:hidden then clipped each one. The scan card came
+ * out 34px tall: title only, with the balance, unit size and Run Full Scan
+ * button clipped away and unreachable. flex-shrink:0 is what makes the content
+ * keep its height and the container scroll, which is the point of the cap. */
+#deskScanner { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#deskScanner > * { flex: 0 0 auto; }
 #deskScanner .agent-card { margin: 0; }
 
 #deskScanner .scanner-controls {
