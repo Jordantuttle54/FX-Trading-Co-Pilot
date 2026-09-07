@@ -282,6 +282,9 @@ def quote_freshness() -> Dict[str, Dict[str, Any]]:
             # synthetic check above be the thing that rejects those.
             "tradeable": bool(q.get("tradeable", True)),
             "market_status": str(q.get("market_status") or ""),
+            # Kept so the scanner can price the entry off the same quote we
+            # just vetted, rather than fetching the book a second time.
+            "quote": q,
         }
     return out
 
@@ -369,7 +372,13 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
             skipped.append({"pair": pair, "reason": "Position limit reached earlier in this run."})
             continue
         try:
-            candidates = base.score_candidates(pair, balance, config["fixed_units"], None, overrides)
+            # Passing the live quote makes the entry the price we could have
+            # actually traded at - ask for a buy, bid for a sell - instead of
+            # the last completed hourly candle's mid close.
+            candidates = base.score_candidates(
+                pair, balance, config["fixed_units"], None, overrides,
+                quote=(freshness.get(pair) or {}).get("quote"),
+            )
         except Exception as exc:
             skipped.append({"pair": pair, "reason": f"Scan failed: {exc}"})
             continue

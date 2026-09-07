@@ -15,6 +15,29 @@ app = chain.app
 MAX_CANDLES = 5000
 MIN_CANDLES = 200
 
+# Typical round-trip dealing cost, in pips, for each pair. The backtest fills
+# at mid on both sides, so without this every result it produces is better
+# than anything the account could achieve - the live agent now enters at the
+# ask (buy) or bid (sell) and pays this for real. Charging one full spread per
+# trade keeps the two comparable. Widen for a pessimistic run via env, e.g.
+# BACKTEST_SPREAD_MULTIPLIER=2.
+SPREAD_PIPS = {
+    "EUR/USD": 1.0,
+    "GBP/USD": 1.3,
+    "USD/JPY": 1.0,
+    "EUR/GBP": 1.2,
+    "GBP/JPY": 2.5,
+    "XAU/USD": 3.0,
+}
+DEFAULT_SPREAD_PIPS = 1.5
+SPREAD_MULTIPLIER = float(os.getenv("BACKTEST_SPREAD_MULTIPLIER", "1"))
+
+
+def spread_cost(pair: str) -> float:
+    """The round-trip cost of one trade on this pair, as a price distance."""
+    pips = SPREAD_PIPS.get(pair, DEFAULT_SPREAD_PIPS) * SPREAD_MULTIPLIER
+    return pips * analysis.pip_size(pair)
+
 
 class BacktestRequest(BaseModel):
     pairs: Optional[List[str]] = None
@@ -91,7 +114,15 @@ def _simulate_pair_trades(pair: str, candles: List[Dict[str, Any]], lookback: in
         if exit_idx is None:
             break  # ran out of history with the trade still open - stop here
 
-        result_r = ((exit_price - entry) / stop_dist if direction == "buy" else (entry - exit_price) / stop_dist) if stop_dist > 0 else 0.0
+        # Trigger levels stay on the mid series the candles are quoted in; the
+        # spread is charged once against the outcome, which is where a real
+        # round trip actually loses it. A stop-out therefore costs slightly
+        # more than 1R, exactly as it does on a live account.
+        gross_move = (exit_price - entry) if direction == "buy" else (entry - exit_price)
+        cost = spread_cost(pair)
+        net_move = gross_move - cost
+        result_r = (net_move / stop_dist) if stop_dist > 0 else 0.0
+        gross_r = (gross_move / stop_dist) if stop_dist > 0 else 0.0
         trades.append({
             "pair": pair,
             "direction": direction,
@@ -101,6 +132,8 @@ def _simulate_pair_trades(pair: str, candles: List[Dict[str, Any]], lookback: in
             "exit_price": exit_price,
             "exit_reason": exit_reason,
             "result_r": round(result_r, 3),
+            "gross_result_r": round(gross_r, 3),
+            "spread_cost_r": round(cost / stop_dist, 3) if stop_dist > 0 else 0.0,
             "bars_held": exit_idx - i,
             "confidence": candidate.get("confidence"),
         })

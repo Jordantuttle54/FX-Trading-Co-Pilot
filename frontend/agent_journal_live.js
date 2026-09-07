@@ -59,6 +59,7 @@
     if (!isOpen(trade)) return closeValue(trade);
     const quote = livePrices[trade.pair];
     if (quote) {
+      if (quote.invented) return null;
       const side = String(trade.direction || '').toLowerCase() === 'sell' ? quote.ask : quote.bid;
       if (side !== null && side !== undefined) return side;
       if (quote.mid !== null && quote.mid !== undefined) return quote.mid;
@@ -136,7 +137,12 @@
     const cls = resultClass(money, trade);
     const source = isOpen(trade) ? 'Live' : 'Saved';
     const rText = r !== null ? `${r > 0 ? '+' : ''}${r.toFixed(2)}R` : '';
-    if (money === null) return `<span class="result-open">${isOpen(trade) ? 'OPEN' : '--'}</span>`;
+    if (money === null) {
+      if (isOpen(trade) && (livePrices[trade.pair] || {}).invented) {
+        return '<span class="result-open">OPEN</span><div class="muted" style="font-size:10px;margin-top:2px">no live price</div>';
+      }
+      return `<span class="result-open">${isOpen(trade) ? 'OPEN' : '--'}</span>`;
+    }
     return `<div class="${cls}" style="font-weight:900">${formatMoney(money)}</div><div class="muted" style="font-size:10px;margin-top:2px">${source}${rText ? ` · ${rText}` : ''}</div>`;
   }
 
@@ -145,12 +151,25 @@
     await Promise.allSettled(pairs.map(async (pair) => {
       if (!force && livePrices[pair] !== undefined && Date.now() - (priceLoadedAt[pair] || 0) < 6500) return;
       const tick = await api(`/api/agent/chart/tick?pair=${encodeURIComponent(pair)}`);
+      // The backend substitutes invented prices whenever the OANDA call fails,
+      // and says so in `provider`. Those are hardcoded base values that drift
+      // further from the real market every month - showing one as "Close Now"
+      // paints a P&L of thousands from a price that never existed. The closing
+      // logic already refuses to act on these; the journal must refuse to
+      // display them, or the two disagree and the screen is the one lying.
+      const provider = String(tick.provider || '').toLowerCase();
+      const invented = provider.includes('synthetic') || provider.includes('failed');
+      if (invented) {
+        livePrices[pair] = { mid: null, bid: null, ask: null, invented: true };
+        priceLoadedAt[pair] = Date.now();
+        return;
+      }
       const mid = num(tick.price, num(tick.mid, null));
       // Keep both sides: which one a trade closes at depends on its direction.
       const bid = num(tick.bid, mid);
       const ask = num(tick.ask, mid);
       if (mid !== null || bid !== null || ask !== null) {
-        livePrices[pair] = { mid, bid, ask };
+        livePrices[pair] = { mid, bid, ask, invented: false };
         priceLoadedAt[pair] = Date.now();
         window.lastPrices = window.lastPrices || {};
         // Other scripts read this expecting a plain mid price - keep that shape.
