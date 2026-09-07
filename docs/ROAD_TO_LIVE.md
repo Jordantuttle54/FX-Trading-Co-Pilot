@@ -4,11 +4,11 @@ Everything between the current state and the point where it would be reasonable 
 risk actual money: the interface restructure, agent autonomy, the safety engineering,
 and the proof.
 
-Nine phases across four stages, ordered by dependency. Each stage is a sensible
+Eight phases across four stages, ordered by dependency. Each stage is a sensible
 stopping point — you can sit at the end of any of them indefinitely without leaving
 something half-finished.
 
-Last updated: 29 August 2026.
+Last updated: 7 September 2026.
 
 ---
 
@@ -45,9 +45,10 @@ Costs are US dollars as listed by each provider, checked August 2026.
 
 Everything else assumes an agent you can leave alone.
 
-1. **Schedule the stop and target check.** *Still to do — needs you.* The endpoint exists
-   and is already protected by `CRON_SECRET`. Point a free external scheduler at it every
-   5 minutes during market hours. No code changes.
+1. ~~**Schedule the stop and target check.**~~ **Done.** cron-job.org calls
+   `/api/agent/cron/auto-close` every 5 minutes and `/api/agent/cron/scan-open` every 15,
+   both authenticated with `CRON_SECRET`. Note both run 7 days a week — the market-closed
+   guard, not the schedule, is what keeps the agent out of the weekend.
 2. ~~**Build the scan-and-open job.**~~ **Done.** `/api/agent/cron/scan-open` scans the
    watchlist and opens qualifying trades, gated on: agent enabled, kill switch, real
    daily and weekly loss limits, the trading window, max concurrent positions, max trades
@@ -77,54 +78,54 @@ Everything else assumes an agent you can leave alone.
 
 # Stage 2 — Rebuild the interface
 
-## Phase 3: Journal onto its own tab
+Layout agreed 7 September 2026 from the mockup. Four tabs become two working ones:
+**Trade** for doing it, **Dashboard** for reviewing it. Performance and Settings stay
+as they are.
 
-Cheapest piece of the restructure, and the right place to set the pattern the other tabs
-follow.
+The reason for the merge is that finding a setup and taking it were two screens apart,
+and reviewing what happened sat on top of the screen used to trade. Splitting by *job*
+rather than by *feature* fixes both.
 
-1. **New tab, move the journal into it.** Relocation of a panel that already works.
-2. **Day and week summaries.** Group closed trades by date with totals per day and week.
-   The underlying stats already exist — presentation, not new maths.
-3. **Set the stylesheet rule for new tabs.** Three bugs in a single session came from
-   seven stylesheets overriding each other with `!important`: the dashboard appearing on
-   every tab, the header forcing the page to 751px on mobile, and the risk card divider.
-   New tabs get their own scoped stylesheet rather than joining that pile.
+## Phase 3: The Trade tab
 
-## Phase 4: Manual trading tab
+Receives the chart, the ticket and the scanner. The biggest build and the one used daily.
 
-The MT4-style page: chart, live P&L, quick buys and sells, fast closes. The biggest
-build, and the one used daily.
+1. **Move the chart and ticket here; fold the scanner in underneath.** Scanner candidates
+   sit below the chart rather than beside it, so the chart stays wide — six pairs fit
+   across without either being cramped. Each candidate carries a *Take setup* button that
+   opens it directly, stamped `scanner_manual_execute` so it reads **Manual-Scanner**.
+2. **Retire the standalone Scanner tab.** Its scan history moves to Performance, which is
+   where the other retrospective views already live.
+3. **The ticket shows the side it fills on.** A sell fills at the bid, a buy at the ask —
+   the same rule the journal and chart already use. Showing the mid here would put the
+   one screen that opens trades out of step with every screen that reports them.
+4. **News guard line under the button.** Already built; needs surfacing here rather than
+   only on the Calendar tab. A blackout matters in the second before you click.
+5. **One-action close from the position row**, rather than finding the trade in a dropdown.
+6. **Fix personal trades not drawing on the chart.** The chart likely filters which trades
+   it draws and hand-placed ones do not match. Right place to fix it is here.
+7. **Stop loading the charting library on every page.** It is currently pulled in
+   everywhere whether a chart is shown or not, and it is the single heaviest asset — a
+   plausible contributor to the unreproduced phone crash.
 
-1. **New tab; chart and trade ticket move here.** Also stop loading the charting library
-   on every page — it is currently pulled in everywhere whether a chart is shown or not.
-2. **Live running P&L.** *New build.* Profit is currently only calculated when a trade
-   closes; there is no floating P&L on open positions. Needs per-position running profit
-   plus an account summary strip. Inputs exist: position size is stored on every trade and
-   there is a live price feed.
-3. **Fix personal trades not drawing on the chart.** Likely the chart filters which trades
-   it draws and personal ones do not match. Right place to fix it is here, where they are
-   the point of the page.
-4. **One-action close from the position row**, rather than finding the trade in a dropdown.
+## Phase 4: The Dashboard tab
 
-## Phase 5: Agent tab and the comparison
+Receives the journal. Mostly relocation of panels that already work.
 
-Mostly relocation, which is why it follows the manual tab that receives the chart.
-
-1. **Scanner and agent activity together, no chart.** The agent reads prices straight from
-   the feed and never used the chart to decide anything, so removing it costs nothing.
-2. **Live AI positions, journal-style.** Open trades with entry, stop, target and running
-   result, plus the decision log. Closed trades appear in the journal — nothing moves, a
-   trade is one record that flips from open to closed.
-3. **AI vs Manual P&L.** Every trade already records who placed it, so this is grouping
-   existing data. One shared wallet, two figures. Show average R beside the pounds: if the
-   agent risks 0.5% and manual trades are larger, the pound figures flatter whoever risked
-   more and say nothing about who traded better.
-
----
+1. **Move the journal here.** It is a review surface, not a trading one.
+2. **Agent vs you, three ways.** `by_origin` already returns AGENT TRADE, Manual-Scanner
+   and Personal with their own R, win rate and drawdown. Surface it. Show average R beside
+   the pounds: if the agent risks 0.5% and hand-placed trades are larger, the pound figures
+   flatter whoever risked more and say nothing about who traded better.
+3. **Day and week summaries.** Group closed trades by date with totals. The maths exists.
+4. **Give the new tabs their own scoped stylesheet.** Three bugs in a single session came
+   from seven stylesheets overriding each other with `!important`: the dashboard appearing
+   on every tab, the header forcing the page to 751px on mobile, and the risk card divider.
+   New work does not join that pile.
 
 # Stage 3 — Make it safe for money
 
-## Phase 6: Make the paper results honest
+## Phase 5: Make the paper results honest
 
 A real-money decision will be made from these numbers, so the numbers must not be
 flattering. Everything here makes results *worse* — that is the point.
@@ -137,11 +138,12 @@ flattering. Everything here makes results *worse* — that is the point.
    agent flattens before the close or accepts gap risk explicitly.
 3. **Maximum holding period.** Nothing currently forces a trade to end. A position that
    hits neither stop nor target can sit open indefinitely, blocking that pair.
-4. **Confirm all costs are counted.** Spread is already charged correctly — trades buy at
-   the ask and sell at the bid using real quotes. Overnight financing on positions held
-   past the daily rollover is not currently accounted for.
+4. **Confirm all costs are counted.** Spread is now charged on both sides: live trades
+   fill at the executable price, and the backtest charges one round trip per trade, so a
+   stop-out costs about -1.11R rather than exactly -1.00R. Overnight financing on positions
+   held past the daily rollover is still not accounted for.
 
-## Phase 7: Live-readiness engineering
+## Phase 6: Live-readiness engineering
 
 The work separating a paper simulation from something allowed near a funded account.
 None of it is optional, and none of it depends on the choice of broker.
@@ -159,8 +161,10 @@ None of it is optional, and none of it depends on the choice of broker.
    There is currently no path for either; the code assumes the order works.
 4. **Decide what happens when the broker is unreachable.** Fail safely and visibly rather
    than silently skipping. Retry with backoff, then stop and report.
-5. **Alerting.** With real money, breakage, trade opens and loss-limit trips need to be
-   known within minutes — not the next time the tab happens to be open.
+5. ~~**Alerting.**~~ **Done.** Trade opens, loss-limit halts and total data failure post
+   to a webhook of your choosing (ntfy for phone push, or Discord/Slack). Routine
+   stand-downs stay silent so the alerts keep meaning something. Still needs one real
+   end-to-end test from Settings → Send Test Alert.
 6. **A kill switch that works on live positions.** It currently stops new paper trades. On
    live it must also be able to flatten what is already open, and be reachable from a
    phone in seconds.
@@ -193,7 +197,7 @@ None of it is optional, and none of it depends on the choice of broker.
 
 # Stage 4 — Prove it, then go live
 
-## Phase 8: Prove the strategy
+## Phase 7: Prove the strategy
 
 Engineering readiness and strategy readiness are different things. This is the one that
 cannot be rushed, because it is mostly waiting.
@@ -210,7 +214,7 @@ cannot be rushed, because it is mostly waiting.
 4. **Review the drawdown, not just the profit.** The number that decides whether this is
    liveable is the worst losing run, not the total.
 
-## Phase 9: Go live, small
+## Phase 8: Go live, small
 
 1. **Smallest size the broker allows, one pair.** The first live weeks test the plumbing,
    not the strategy. Position size should be small enough that losing every trade would
@@ -230,15 +234,15 @@ cannot be rushed, because it is mostly waiting.
 The Paper Mode notice in the app already states its own bar. This is that list, plus what
 the recent work added.
 
-- [ ] The agent has run unattended for a sustained period without being rescued — *Phases 1, 8*
-- [ ] Positive expectancy after realistic spreads, slippage and financing — *Phase 6*
-- [ ] The strategy has been tested on data it was not tuned on — *Phase 8.1, outstanding*
-- [ ] Worst drawdown is known, and acceptable in pounds — *Phase 8.4*
-- [ ] The app reconciles against the broker and reports disagreement — *Phase 7.1*
-- [ ] Orders cannot be double-placed, and rejections are handled — *Phases 7.2, 7.3*
-- [ ] Breakage is reported within minutes — *Phase 7.5*
-- [ ] The kill switch can flatten live positions from a phone — *Phase 7.6*
-- [ ] The journal is complete, auditable and exportable — *Phase 3*
+- [ ] The agent has run unattended for a sustained period without being rescued — *Phases 1, 7*
+- [ ] Positive expectancy after realistic spreads, slippage and financing — *Phase 5*
+- [ ] The strategy has been tested on data it was not tuned on — *Phase 7.1, outstanding*
+- [ ] Worst drawdown is known, and acceptable in pounds — *Phase 7.4*
+- [ ] The app reconciles against the broker and reports disagreement — *Phase 6.1*
+- [ ] Orders cannot be double-placed, and rejections are handled — *Phases 6.2, 6.3*
+- [ ] Breakage is reported within minutes — *Phase 6.5*
+- [ ] The kill switch can flatten live positions from a phone — *Phase 6.6*
+- [ ] The journal is complete, auditable and exportable — *Phase 4*
 - [ ] No hard risk rule breached during the forward test
 
 **Worth being blunt about.** Stages 1 and 2 are the enjoyable part and roughly a fifth of
@@ -257,7 +261,7 @@ stopped doing what its owner assumed it was doing.
 | Broker and host? | **Settled** — OANDA on Vercel. Revisit only at standard-lot size. |
 | How often should the agent scan? | Open. Vercel's free plan runs the scan once a weekday at 09:30 UTC. An external scheduler can make it every 5 minutes for free. |
 | Which pairs may it trade unattended? | Settable in Settings. Worth starting narrow — an unwatched agent trading gold on a tight stop is the highest-variance thing in the system. |
-| Trade only inside the London window? | Settable in Settings, on by default. |
+| Trade only inside the London window? | **Settled — off.** Neither the backtest nor the calibrator ever filtered by session, so the settings were fitted on all-hours data. Running 24/5 matches what was actually tested; the London-only restriction did not. Still switchable in Settings. |
 | Which strategies? | Settable per pair, or globally for the agent. Trend continuation is the default; mean reversion is opt-in and unproven. |
 
 ---
@@ -266,7 +270,7 @@ stopped doing what its owner assumed it was doing.
 
 - **The phone crash.** Never reproduced — production is not reachable from the build
   environment and iOS uses a browser engine that could not be tested there. Removing the
-  chart from most pages in Phase 4 may resolve it as a side effect. **This must be fixed
+  chart from most pages in Phase 3 may resolve it as a side effect. **This must be fixed
   before live:** a kill switch that cannot be reached from a phone is not a kill switch.
   The diagnostic that would settle it is whether `/api/health` loads on the phone.
 - **Strategy version history.** Six calibrated configurations are saved. Confirm the right
