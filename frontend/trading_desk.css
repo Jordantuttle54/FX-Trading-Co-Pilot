@@ -66,12 +66,17 @@
    scrolled - a scan that returns more just makes the page longer, which is
    what a scan finishing should do. */
 #tradeDesk #deskScanResults {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   min-width: 0;
+  align-items: start;
 }
-#tradeDesk #deskScanResults > * { flex: 0 0 auto; }
+/* Approved setups get the full width; rejected and no-setup share the row
+   below. They were two full-width blocks each holding a couple of narrow
+   cards against a lot of empty space, which pushed everything worth reading
+   further down the page. They are both "why not" - one row is enough. */
+#tradeDesk #deskScanResults > #candidatesSection { grid-column: 1 / -1; }
 
 /* Expanding the chart drops everything else below it. */
 #tradeDesk #agentChartPanel.chart-expanded .chart-workspace {
@@ -248,14 +253,14 @@
 #tradeDesk .candidates-grid,
 #tradeDesk #candidatesList {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  gap: 10px;
 }
 
 #tradeDesk .scanner-approved-card {
   display: grid;
-  gap: 9px;
-  padding: 14px;
+  gap: 7px;
+  padding: 11px 12px;
   border: 1px solid var(--border, #2a3547);
   border-radius: 10px;
   background: var(--bg3, #1e2634);
@@ -268,29 +273,29 @@
   gap: 10px;
   flex-wrap: wrap;
 }
-#tradeDesk .scanner-card-pair { font-size: 15px; font-weight: 700; }
-#tradeDesk .scanner-confidence { font-size: 13px; color: var(--text-muted, #8b9ab0); }
+#tradeDesk .scanner-card-pair { font-size: 14px; font-weight: 700; margin: 0; }
+#tradeDesk .scanner-confidence { font-size: 12px; color: var(--text-muted, #8b9ab0); }
 #tradeDesk .scanner-levels {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
 #tradeDesk .scanner-meta,
 #tradeDesk .scanner-thesis {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-muted, #8b9ab0);
-  line-height: 1.5;
+  line-height: 1.45;
 }
 #tradeDesk .scanner-star { color: var(--accent, #f0b429); }
-#tradeDesk .scanner-place-btn { width: 100%; margin-top: 2px; }
+#tradeDesk .scanner-place-btn { width: 100%; margin-top: 1px; padding: 7px 12px; font-size: 12px; }
 
 #tradeDesk .rejected-list,
 #tradeDesk .no-setup-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 #tradeDesk .section-heading { margin: 4px 0 10px; font-size: 14px; }
 
@@ -304,12 +309,12 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin: 4px 0 12px;
+  margin: 2px 0 9px;
 }
 #tradeDesk .scanner-section-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -324,8 +329,8 @@
 #tradeDesk .scanner-icon-approved { color: var(--green, #3fb950); }
 #tradeDesk .scanner-icon-rejected { color: var(--red, #f85149); }
 #tradeDesk .scanner-view-btn {
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 5px 10px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -362,8 +367,8 @@
    past, so they get less weight than an approved setup, not the same. */
 #tradeDesk .scanner-reject-card {
   display: grid;
-  gap: 7px;
-  padding: 12px;
+  gap: 5px;
+  padding: 9px 11px;
   border: 1px solid var(--border, #2a3547);
   border-radius: 10px;
   background: var(--bg2, #161d29);
@@ -393,7 +398,7 @@
   color: var(--text-muted, #8b9ab0);
 }
 #tradeDesk .scanner-sparkline {
-  height: 26px;
+  height: 18px;
   opacity: 0.55;
 }
 #tradeDesk .scanner-sparkline svg { width: 100%; height: 100%; display: block; }
