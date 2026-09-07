@@ -184,9 +184,14 @@ None of it is optional, and none of it depends on the choice of broker.
    (`backend/news_guard.py`): it blacks out a configurable window either side of
    high-impact releases for both currencies in a pair, gold included via USD, and it
    refuses to trade rather than guess when the calendar cannot be reached. It stays off
-   and says so until a provider is configured. Set `ECONOMIC_CALENDAR_PROVIDER=finnhub`
-   and `ECONOMIC_CALENDAR_API_KEY` (free tier), or point `ECONOMIC_CALENDAR_URL` at any
-   JSON feed. Until that is done nothing stops the agent opening straight into NFP.
+   and says so until a provider is configured. Either
+   `ECONOMIC_CALENDAR_PROVIDER=finnhub` with `ECONOMIC_CALENDAR_API_KEY`, or
+   `ECONOMIC_CALENDAR_URL` pointed at any endpoint returning JSON. Both field
+   conventions are handled, so a free ForexFactory-style weekly feed needs no code
+   change. **Check the cost before relying on a provider** — Finnhub gates several
+   endpoints behind its paid plans and this may be one of them; a provider that starts
+   refusing requests stops the agent trading, by design. Until a calendar is connected,
+   nothing stops the agent opening straight into NFP.
 10. **Give previews their own database.** Preview deployments do not inherit
    Production-scoped environment variables, but they *do* share `DATABASE_URL` — so a
    build with no market-data credentials reads and writes the real wallet. Opening trades

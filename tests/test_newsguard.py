@@ -59,6 +59,19 @@ check("a row with no usable time is dropped", ng.normalise_event({"country": "US
 check("a row with no identifiable currency is dropped",
       ng.normalise_event({"time": at(5), "country": "ZZ"}) is None)
 
+# Free ForexFactory-style feeds put the currency itself in "country" and the
+# event in "title", with a capitalised impact. Accepting that shape is what
+# keeps a paid provider from being the only option.
+ff = ng.normalise_event({"title": "Non-Farm Employment Change", "country": "USD",
+                         "date": "2026-09-04T13:30:00-04:00", "impact": "High"})
+check("a ForexFactory-style row is accepted", ff is not None)
+check("its currency is read straight from country", ff and ff["currency"] == "USD")
+check("its title becomes the event name", ff and ff["event"] == "Non-Farm Employment Change")
+check("its impact is normalised to lower case", ff and ff["impact"] == "high")
+check("its offset timestamp parses", ff and ff["time"].startswith("2026-09-04T13:30:00"))
+check("a two-letter country still maps through the table",
+      (ng.normalise_event({"time": at(5), "country": "GB", "event": "x"}) or {}).get("currency") == "GBP")
+
 # ---- off until configured, and honest about it ----------------------------
 ng.PROVIDER = ""; ng.API_KEY = ""; ng.CUSTOM_URL = ""
 check("the guard is off with no provider", ng.configured() is False)
