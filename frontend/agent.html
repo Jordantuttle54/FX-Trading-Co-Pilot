@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/agent_dashboard.css"/>
   <link rel="stylesheet" href="/static/agent_control.css"/>
 <link rel="stylesheet" href="/static/trading_desk.css"/>
+<link rel="stylesheet" href="/static/dashboard_review.css"/>
 </head>
 <body>
 
@@ -115,6 +116,22 @@
         <div id="upcomingNewsPanel">Loading...</div>
       </div>
     </div>
+    <div class="dashboard-review-row">
+      <div class="agent-card" id="originSplitCard">
+        <div class="desk-card-head">
+          <h2>Agent vs you</h2>
+          <button class="btn-secondary" onclick="if(window.refreshDashboardReview)window.refreshDashboardReview()">Refresh</button>
+        </div>
+        <p class="card-sub">Same wallet, three sets of results. Average R is the fair comparison &mdash; pounds flatter whoever risked more.</p>
+        <div id="originSplitPanel">Loading&hellip;</div>
+      </div>
+      <div class="agent-card" id="dayBreakdownCard">
+        <h2>By day</h2>
+        <p class="card-sub">Closed trades grouped by the day they closed.</p>
+        <div id="dayBreakdownPanel">Loading&hellip;</div>
+      </div>
+    </div>
+
     <div class="agent-card">
       <h2>Trade Journal - All Paper Trades</h2>
       <div class="journal-filters">
@@ -406,5 +423,6 @@
 <script src="/static/agent_control.js"></script>
 <script src="/static/data_source_banner.js"></script>
 <script src="/static/trading_desk.js"></script>
+<script src="/static/dashboard_review.js"></script>
 </body>
 </html>
