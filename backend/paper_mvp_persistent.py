@@ -1377,6 +1377,45 @@ async def agent_review_pending(user: str = Depends(current_user)):
             reviewed.append(await agent_review_trade(str(t["id"]), user))
     return {"reviewed_count": len(reviewed), "reviews": reviewed}
 
+def max_drawdown_r(rows: List[Dict[str, Any]]) -> float:
+    """Deepest peak-to-trough dip in cumulative R, worst-first ordering by time.
+
+    This was hardcoded to 0, which does not read as "not implemented" - it
+    reads as "this strategy has never had a losing run".
+    """
+    closed = [t for t in rows if t.get("status") == "closed" and t.get("result_r") is not None]
+    closed.sort(key=lambda t: str(t.get("closed_at") or t.get("created_at") or ""))
+    running = peak = worst = 0.0
+    for t in closed:
+        running += float(t["result_r"])
+        peak = max(peak, running)
+        worst = max(worst, peak - running)
+    return round(worst, 2)
+
+
+def _group_perf(rows: List[Dict[str, Any]], key) -> Dict[str, Any]:
+    """perf() for each group, so a weak pair or setup is visible on its own."""
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for t in rows:
+        if t.get("status") != "closed" or t.get("result_r") is None:
+            continue
+        name = str(key(t) or "unknown")
+        groups.setdefault(name, []).append(t)
+    return {name: {**perf(items), "max_drawdown_r": max_drawdown_r(items)}
+            for name, items in sorted(groups.items())}
+
+
+def _confidence_band(trade: Dict[str, Any]) -> str:
+    try:
+        conf = int(trade.get("confidence") or 0)
+    except (TypeError, ValueError):
+        return "unknown"
+    if conf <= 0:
+        return "not scored"
+    low = (conf // 10) * 10
+    return f"{low}-{low + 9}%"
+
+
 @app.get("/api/agent/performance")
 async def agent_performance(user: str = Depends(current_user)):
     rows = list_trades(user)
@@ -1384,7 +1423,22 @@ async def agent_performance(user: str = Depends(current_user)):
     if len(closed) < 5:
         return {"status": "insufficient_data", "message": f"{len(closed)} closed paper trades available. Need at least 5 for a basic report and 50 before optimisation.", "count": len(closed)}
     overall = perf(rows)
-    return {"status": "ok", "count": len(closed), "overall": overall, "max_drawdown_r": 0, "by_pair": {}, "by_setup": {}, "by_session": {}, "by_confidence": {}, "by_tag": {}, "ready_for_optimisation": len(closed) >= 50}
+    # These five were hardcoded empty, which is why nothing could be compared -
+    # including the agent's trades against your own, which is the whole point
+    # of recording who placed each one.
+    return {
+        "status": "ok",
+        "count": len(closed),
+        "overall": overall,
+        "max_drawdown_r": max_drawdown_r(rows),
+        "by_pair": _group_perf(rows, lambda t: t.get("pair")),
+        "by_origin": _group_perf(rows, lambda t: t.get("trade_origin") or "unrecorded"),
+        "by_setup": _group_perf(rows, lambda t: t.get("setup_label") or t.get("setup_type")),
+        "by_session": _group_perf(rows, lambda t: t.get("session")),
+        "by_confidence": _group_perf(rows, _confidence_band),
+        "by_tag": _group_perf(rows, lambda t: t.get("quality_tag")),
+        "ready_for_optimisation": len(closed) >= 50,
+    }
 
 @app.post("/api/agent/optimise")
 async def agent_optimise(req: OptimisationRequest, user: str = Depends(current_user)):

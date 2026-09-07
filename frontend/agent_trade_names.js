@@ -20,7 +20,20 @@
   function displayName(trade) {
     if (!trade) return 'Paper Trade';
     if (trade.display_name || trade.friendly_name) return trade.display_name || trade.friendly_name;
-    const origin = String(trade.trade_origin || trade.origin || '').toLowerCase().includes('personal') ? 'Personal' : 'AI';
+    // Mirrors ORIGIN_LABELS in backend/paper_mvp_trade_names.py. Anything not
+    // containing "personal" used to fall through to "AI", so a trade you
+    // placed from the scanner, and any older trade with no origin recorded,
+    // was credited to the agent - which is the comparison this label exists
+    // to inform. Only the agent trading unattended is "AI".
+    const ORIGIN_LABELS = {
+      agent_auto: 'AI',
+      ai_quick_open: 'Personal',
+      personal_quick_open: 'Personal',
+      scanner_manual_execute: 'Personal',
+    };
+    const origin = trade.trade_origin_label
+      || ORIGIN_LABELS[String(trade.trade_origin || trade.origin || '').toLowerCase()]
+      || 'Unknown';
     const pair = trade.pair || 'Unknown';
     const dir = String(trade.direction || 'trade').toLowerCase();
     const dirLabel = dir === 'buy' ? 'Buy' : dir === 'sell' ? 'Sell' : 'Trade';
