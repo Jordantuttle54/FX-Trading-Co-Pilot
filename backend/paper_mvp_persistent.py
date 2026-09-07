@@ -41,6 +41,48 @@ log = logging.getLogger("fx")
 DATA_HEALTH: Dict[str, Any] = {"quotes_ok": None, "candles_ok": None, "last_error": "", "last_error_at": ""}
 
 
+# Who actually placed a trade, and what to call them on screen. The only thing
+# earning "AGENT TRADE" is the agent opening a position on its own with nobody
+# watching - that is the distinction the AI-versus-manual comparison rests on.
+ORIGIN_AGENT = "agent_auto"
+ORIGIN_SCANNER = "scanner_manual_execute"
+ORIGIN_PERSONAL = "personal_quick_open"
+
+ORIGIN_LABELS = {
+    ORIGIN_AGENT: "AGENT TRADE",
+    ORIGIN_SCANNER: "Manual-Scanner",
+    "ai_quick_open": "Manual-Scanner",
+    ORIGIN_PERSONAL: "Personal",
+    "manual_copilot": "Personal",
+}
+
+# Trades opened before the app recorded an origin. The agent did not exist
+# then, so every one of them was placed by a person - the only question is
+# whether the setup came from the scanner or was drawn by hand. setup_type is
+# an exact enum rather than free text, so this is a lookup, not a guess.
+LEGACY_SETUP_ORIGINS = {
+    "live_data_trend_continuation": ORIGIN_SCANNER,
+    "live_data_mean_reversion": ORIGIN_SCANNER,
+    "personal_quick_paper_trade": ORIGIN_PERSONAL,
+    "manual_copilot_paper_trade": "manual_copilot",
+}
+
+
+def resolve_origin(trade: Dict[str, Any]) -> str:
+    """The canonical origin key for a trade, including older rows."""
+    origin = str(trade.get("trade_origin") or trade.get("origin") or "").strip().lower()
+    if origin in ORIGIN_LABELS:
+        return origin
+    setup = str(trade.get("setup_type") or "").strip().lower()
+    if setup in LEGACY_SETUP_ORIGINS:
+        return LEGACY_SETUP_ORIGINS[setup]
+    return "unrecorded"
+
+
+def origin_label(trade: Dict[str, Any]) -> str:
+    return ORIGIN_LABELS.get(resolve_origin(trade), "Unknown")
+
+
 def closed_since(user: str, since: datetime) -> List[Dict[str, Any]]:
     out = []
     for t in list_trades(user, "closed"):
@@ -1515,7 +1557,7 @@ async def agent_performance(user: str = Depends(current_user)):
         "overall": overall,
         "max_drawdown_r": max_drawdown_r(rows),
         "by_pair": _group_perf(rows, lambda t: t.get("pair")),
-        "by_origin": _group_perf(rows, lambda t: t.get("trade_origin") or "unrecorded"),
+        "by_origin": _group_perf(rows, origin_label),
         "by_setup": _group_perf(rows, lambda t: t.get("setup_label") or t.get("setup_type")),
         "by_session": _group_perf(rows, lambda t: t.get("session")),
         "by_confidence": _group_perf(rows, _confidence_band),

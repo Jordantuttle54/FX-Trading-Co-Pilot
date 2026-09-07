@@ -26,29 +26,9 @@ def _direction_label(value: Any) -> str:
     return direction.title() if direction else "Trade"
 
 
-# Who actually placed the trade. The only thing that earns the "AI" label is
-# the agent opening a position on its own, with nobody watching - that is the
-# distinction worth drawing, and the one that has to be right before real
-# money is involved. Everything a person clicked is theirs, even when the AI
-# found the setup.
-ORIGIN_LABELS = {
-    "agent_auto": "AI",
-    "ai_quick_open": "Personal",
-    "personal_quick_open": "Personal",
-    "scanner_manual_execute": "Personal",
-}
-
-
 def _origin_label(trade: Dict[str, Any]) -> str:
-    origin = _safe_str(trade.get("trade_origin") or trade.get("origin")).lower()
-    if origin in ORIGIN_LABELS:
-        return ORIGIN_LABELS[origin]
-    # Anything else predates trades recording who opened them. Guessing from
-    # the setup text was how a hand-placed trade came to be labelled "AI" -
-    # the substring test also matched any setup containing the letters "ai",
-    # which "available", "chain" and "fail" all do. An honest "Unknown" keeps
-    # the AI-versus-manual comparison from quietly counting the wrong trades.
-    return "Unknown"
+    """Delegates to base so naming and the performance split cannot diverge."""
+    return base.origin_label(trade)
 
 
 def _sort_key(trade: Dict[str, Any]) -> tuple[str, str]:

@@ -56,16 +56,18 @@ base.TRADES.extend([
 ])
 r = client.get("/api/agent/performance", headers=H).json()
 by_origin = r["by_origin"]
-check("the agent's trades are reported separately", "agent_auto" in by_origin)
-check("hand-placed trades are reported separately", "personal_quick_open" in by_origin)
-check(f"the agent's total R is its own ({by_origin['agent_auto']['total_r']})",
-      by_origin["agent_auto"]["total_r"] == 5.0)
-check(f"manual total R is its own ({by_origin['personal_quick_open']['total_r']})",
-      by_origin["personal_quick_open"]["total_r"] == -3.0)
-check("win rates differ between the two", 
-      by_origin["agent_auto"]["win_rate"] != by_origin["personal_quick_open"]["win_rate"])
+# Grouped by the label you actually read on screen, so the split matches the
+# journal rather than needing a lookup table to interpret.
+check("the agent's trades are reported separately", "AGENT TRADE" in by_origin)
+check("hand-placed trades are reported separately", "Personal" in by_origin)
+check(f"the agent's total R is its own ({by_origin['AGENT TRADE']['total_r']})",
+      by_origin["AGENT TRADE"]["total_r"] == 5.0)
+check(f"manual total R is its own ({by_origin['Personal']['total_r']})",
+      by_origin["Personal"]["total_r"] == -3.0)
+check("win rates differ between the two",
+      by_origin["AGENT TRADE"]["win_rate"] != by_origin["Personal"]["win_rate"])
 check("each group carries its own drawdown",
-      by_origin["personal_quick_open"]["max_drawdown_r"] == 3.0)
+      by_origin["Personal"]["max_drawdown_r"] == 3.0)
 
 # --- too little data is still reported honestly ----------------------------
 base.TRADES.clear()

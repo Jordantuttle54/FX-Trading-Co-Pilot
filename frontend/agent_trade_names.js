@@ -20,20 +20,33 @@
   function displayName(trade) {
     if (!trade) return 'Paper Trade';
     if (trade.display_name || trade.friendly_name) return trade.display_name || trade.friendly_name;
-    // Mirrors ORIGIN_LABELS in backend/paper_mvp_trade_names.py. Anything not
-    // containing "personal" used to fall through to "AI", so a trade you
-    // placed from the scanner, and any older trade with no origin recorded,
-    // was credited to the agent - which is the comparison this label exists
-    // to inform. Only the agent trading unattended is "AI".
+    // Mirrors ORIGIN_LABELS / LEGACY_SETUP_ORIGINS in backend/paper_mvp_persistent.py.
+    // Only the agent trading unattended is an AGENT TRADE. A setup the scanner
+    // found but you chose to execute is Manual-Scanner. Levels you drew
+    // yourself are Personal. Older rows predate origins being recorded, and
+    // the agent did not exist then, so setup_type - an exact enum, not free
+    // text - says which of the two a person used.
     const ORIGIN_LABELS = {
-      agent_auto: 'AI',
-      ai_quick_open: 'Personal',
+      agent_auto: 'AGENT TRADE',
+      scanner_manual_execute: 'Manual-Scanner',
+      ai_quick_open: 'Manual-Scanner',
       personal_quick_open: 'Personal',
-      scanner_manual_execute: 'Personal',
+      manual_copilot: 'Personal',
     };
-    const origin = trade.trade_origin_label
-      || ORIGIN_LABELS[String(trade.trade_origin || trade.origin || '').toLowerCase()]
-      || 'Unknown';
+    const LEGACY_SETUP_ORIGINS = {
+      live_data_trend_continuation: 'scanner_manual_execute',
+      live_data_mean_reversion: 'scanner_manual_execute',
+      personal_quick_paper_trade: 'personal_quick_open',
+      manual_copilot_paper_trade: 'manual_copilot',
+    };
+    function resolveOrigin(t) {
+      const o = String(t.trade_origin || t.origin || '').trim().toLowerCase();
+      if (ORIGIN_LABELS[o]) return ORIGIN_LABELS[o];
+      const setup = String(t.setup_type || '').trim().toLowerCase();
+      const legacy = LEGACY_SETUP_ORIGINS[setup];
+      return legacy ? ORIGIN_LABELS[legacy] : 'Unknown';
+    }
+    const origin = trade.trade_origin_label || resolveOrigin(trade);
     const pair = trade.pair || 'Unknown';
     const dir = String(trade.direction || 'trade').toLowerCase();
     const dirLabel = dir === 'buy' ? 'Buy' : dir === 'sell' ? 'Sell' : 'Trade';
