@@ -187,11 +187,43 @@ function startClock() {
       const h = london.getHours();
           const inWindow = h >= 7 && h < 11;
           const ws = document.getElementById('windowStatus');
-          ws.textContent = inWindow ? 'WINDOW OPEN' : 'WINDOW CLOSED';
-          ws.className = `window-status ${inWindow ? 'window-open' : 'window-closed'}`;
+          const info = document.querySelector('.window-info');
+          // "WINDOW CLOSED" reads as "trading is blocked". It only is when the
+          // agent is set to respect the window; with that switched off the
+          // agent trades 24/5 and the old label claimed a restriction that was
+          // not being applied.
+          if (windowEnforced === false) {
+            ws.textContent = 'NOT ENFORCED';
+            ws.className = 'window-status';
+            if (info) info.textContent = 'The agent trades 24/5. Turn "Only trade in the London window" on in Settings to restrict it to 07:00 - 11:00 London time.';
+          } else {
+            ws.textContent = inWindow ? 'WINDOW OPEN' : 'WINDOW CLOSED';
+            ws.className = `window-status ${inWindow ? 'window-open' : 'window-closed'}`;
+            if (info) info.textContent = 'Active window: 07:00 - 11:00 London time';
+          }
     }
     tick();
     setInterval(tick, 10000);
+    // Redraw as soon as the config lands rather than on the next 10s tick,
+    // otherwise the card asserts a window state before it knows one.
+    window.__redrawWindowCard = tick;
+    refreshWindowEnforcement();
+    setInterval(refreshWindowEnforcement, 60000);
+}
+
+// Whether the London window actually gates the agent. null until known, so
+// the card does not assert either way before the config has been read.
+let windowEnforced = null;
+
+async function refreshWindowEnforcement() {
+    try {
+          const data = await api('/api/agent/agent-config');
+          windowEnforced = !!(data.config && data.config.respect_window);
+          if (typeof window.__redrawWindowCard === 'function') window.__redrawWindowCard();
+    } catch (e) {
+          /* Leave it unknown rather than guessing; the label keeps its
+             clock-based reading until the config is available. */
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -343,7 +375,10 @@ async function loadOpenTradesDetail() {
           renderOpenTrades(data.open_trades || [], 'openTradesDetail');
           populatePriceForms(data.open_trades || []);
     } catch (e) {
-          document.getElementById('openTradesDetail').innerHTML = `<span class="muted small">Error: ${e.message}</span>`;
+          // The Trade tab now renders positions itself, so this panel may not
+          // be on the page at all.
+          const el = document.getElementById('openTradesDetail');
+          if (el) el.innerHTML = `<span class="muted small">Error: ${e.message}</span>`;
     }
 }
 

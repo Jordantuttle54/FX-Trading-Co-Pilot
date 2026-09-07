@@ -18,6 +18,22 @@ the calendar cannot be fetched, we do not know whether NFP is in five minutes,
 and "I don't know" is not a reason to trade. Set NEWS_GUARD_FAIL_OPEN=true to
 invert that if an outage silencing the agent is worse for you than trading
 blind through a release.
+
+Choosing a provider
+-------------------
+Two shapes are supported and neither is privileged:
+
+  ECONOMIC_CALENDAR_PROVIDER=finnhub + ECONOMIC_CALENDAR_API_KEY
+  ECONOMIC_CALENDAR_URL=<any endpoint returning JSON>
+
+The custom route takes any feed that returns a list of events, or an object
+containing one. normalise_event() accepts both field conventions in the wild:
+a country code with the event under "event" (Finnhub), or the currency itself
+under "country" with the event under "title", which is how the widely-copied
+ForexFactory weekly JSON is shaped. So a free feed needs no code change.
+
+Whatever you pick, check what it costs before relying on it - a provider that
+starts refusing requests will stop the agent trading, by design.
 """
 
 from __future__ import annotations
@@ -96,7 +112,11 @@ def normalise_event(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     currency = str(raw.get("currency") or "").strip().upper()
     if not currency:
         country = str(raw.get("country") or raw.get("region") or "").strip().upper()
-        currency = COUNTRY_CURRENCY.get(country, "")
+        # Feeds disagree about this field. Finnhub puts a country code in it
+        # ("US"); the ForexFactory-style weekly JSON that most free calendars
+        # copy puts the currency itself in it ("USD"). Accept either, so a free
+        # feed works without needing its own adapter.
+        currency = COUNTRY_CURRENCY.get(country, country if len(country) == 3 else "")
     if not currency:
         return None
     return {
@@ -108,7 +128,10 @@ def normalise_event(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _fetch_finnhub() -> List[Dict[str, Any]]:
-    # Free tier covers the economic calendar. Documented at finnhub.io/docs/api.
+    # Finnhub gates several endpoints behind its paid plans; check
+    # finnhub.io/pricing before assuming this one is on the free tier. A
+    # PremiumRequired reply surfaces as a fetch failure, which - because the
+    # guard fails closed - stops trading rather than silently trading blind.
     url = "https://finnhub.io/api/v1/calendar/economic"
     with httpx.Client(timeout=12) as client:
         res = client.get(url, params={"token": API_KEY})

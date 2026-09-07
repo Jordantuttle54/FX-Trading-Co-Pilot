@@ -1,0 +1,86 @@
+/* dashboard_review.css - the agent-vs-you split and the by-day breakdown.
+ *
+ * Scoped to its own ids and class prefix, no !important. See the note at the
+ * top of trading_desk.css for why.
+ */
+
+.dashboard-review-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+#originSplitCard .desk-card-head,
+#dayBreakdownCard .desk-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+#originSplitCard h2,
+#dayBreakdownCard h2 { margin: 0; }
+
+.review-scroll { overflow-x: auto; }
+
+.review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  min-width: 420px;
+}
+.review-table th {
+  text-align: left;
+  padding: 7px 9px;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-muted, #8b9ab0);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border, #2a3547);
+}
+.review-table td {
+  padding: 9px;
+  border-bottom: 1px solid var(--border, #2a3547);
+  white-space: nowrap;
+}
+.review-table tbody tr:last-child td { border-bottom: 0; }
+.review-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.review-up { color: var(--green, #3fb950); font-weight: 600; }
+.review-down { color: var(--red, #f85149); font-weight: 600; }
+.review-flat { color: var(--text-muted, #8b9ab0); }
+
+.review-origin {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--border, #2a3547);
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #8b9ab0);
+}
+.review-origin.agent { color: #7c9cf5; border-color: rgba(124, 156, 245, 0.45); }
+.review-origin.scanner { color: var(--accent, #f0b429); border-color: rgba(240, 180, 41, 0.45); }
+
+/* A sample too small to mean anything should say so rather than print a
+   confident-looking win rate. */
+.review-thin { color: var(--accent, #f0b429); margin-left: 2px; cursor: help; }
+.review-note {
+  margin-top: 9px;
+  font-size: 11.5px;
+  color: var(--text-muted, #8b9ab0);
+}
+
+.review-empty {
+  color: var(--text-muted, #8b9ab0);
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+@media (max-width: 980px) {
+  .dashboard-review-row { grid-template-columns: minmax(0, 1fr); }
+}
