@@ -54,13 +54,33 @@ reset(); base.snapshot = snap_at(16)
 outside = agent.run_agent_once(USER, "test")
 check("16 min old is refused", outside["opened"] == [])
 
-# --- a quote with no timestamp must not block trading -----------------------
+# --- a quote whose age we cannot establish is refused -----------------------
+# This assertion used to be the opposite ("a missing timestamp does not falsely
+# block"). That was wrong: not knowing how old a price is, is not a reason to
+# trust it. It went unnoticed because the London window kept the agent away
+# from the closed market anyway - with the window off, this gate is all there is.
 reset()
 base.snapshot = lambda: {"provider":"oanda","quotes":[
     {"pair":p,"price":trending(p)[-1]["close"],"bid":1.0,"ask":1.0,"source":"oanda-practice"}
     for p in base.WATCHLIST]}
 notime = agent.run_agent_once(USER, "test")
-check("a missing timestamp does not falsely block", len(notime["opened"]) > 0)
+check("an unknown-age quote is refused, not trusted", notime["opened"] == [])
+check("and it says it could not tell the price's age",
+      any("how old" in s["reason"] for s in notime["skipped"]))
+
+# --- the broker saying "closed" beats guessing from the timestamp -----------
+# OANDA reports tradeable=false on a shut market. That is the market telling us
+# directly, rather than us inferring it from how stale the price looks.
+reset()
+base.snapshot = lambda: {"provider":"oanda","quotes":[
+    {"pair":p,"price":trending(p)[-1]["close"],"bid":1.0,"ask":1.0,
+     "timestamp":datetime.now(timezone.utc).isoformat(),
+     "tradeable":False,"market_status":"non-tradeable","source":"oanda-practice"}
+    for p in base.WATCHLIST]}
+shut = agent.run_agent_once(USER, "test")
+check("a fresh quote on a shut market is still refused", shut["opened"] == [])
+check("and it says the market is closed",
+      any("closed for trading" in s["reason"] for s in shut["skipped"]))
 
 # --- the window toggle still works when you want it -------------------------
 reset(respect_window=True); base.snapshot = snap_at(0.2)

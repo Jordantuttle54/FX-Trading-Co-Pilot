@@ -1,4 +1,5 @@
 import os, sys, pathlib
+from datetime import datetime, timezone
 os.environ["TEMP_PASSWORDLESS_LOGIN"] = "true"
 os.environ.pop("DATABASE_URL", None)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -38,9 +39,16 @@ def trending(pair):
 
 base.MIN_CONF = 0          # testing the agent's gates, not the strategy's
 base.get_candles = trending
-base.snapshot = lambda: {"provider": "oanda", "quotes": [
-    {"pair": p, "price": trending(p)[-1]["close"], "bid": trending(p)[-1]["close"],
-     "ask": trending(p)[-1]["close"], "source": "oanda-practice"} for p in base.WATCHLIST]}
+# Real OANDA quotes always carry the broker's own tick time and a tradeable
+# flag; the agent refuses any quote it cannot age, so the stub must too.
+def live_snapshot():
+    ts = datetime.now(timezone.utc).isoformat()
+    return {"provider": "oanda", "quotes": [
+        {"pair": p, "price": trending(p)[-1]["close"], "bid": trending(p)[-1]["close"],
+         "ask": trending(p)[-1]["close"], "timestamp": ts, "tradeable": True,
+         "source": "oanda-practice"} for p in base.WATCHLIST]}
+
+base.snapshot = live_snapshot
 
 # ---- defaults are safe -----------------------------------------------------
 agent._MEM_CONFIG.clear()
@@ -104,9 +112,7 @@ syn = agent.run_agent_once(USER, "test")
 check("agent refuses to trade on fallback prices", syn["opened"] == [])
 check("and says the data was unavailable", any("fallback prices" in s["reason"] for s in syn["skipped"]))
 base.get_candles = trending
-base.snapshot = lambda: {"provider": "oanda", "quotes": [
-    {"pair": p, "price": trending(p)[-1]["close"], "bid": trending(p)[-1]["close"],
-     "ask": trending(p)[-1]["close"], "source": "oanda-practice"} for p in base.WATCHLIST]}
+base.snapshot = live_snapshot
 
 # ---- loss limits -----------------------------------------------------------
 reset(min_confidence=0)

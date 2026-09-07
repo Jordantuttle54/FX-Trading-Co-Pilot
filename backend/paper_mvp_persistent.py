@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import random
@@ -33,11 +34,54 @@ WATCHLIST = ["GBP/USD", "EUR/USD", "USD/JPY", "EUR/GBP", "GBP/JPY", "XAU/USD"]
 OANDA_PRACTICE = "https://api-fxpractice.oanda.com"
 OANDA_LIVE = "https://api-fxtrade.oanda.com"
 
+log = logging.getLogger("fx")
+
+# Why the last market-data call fell back to invented values. Read by the
+# health endpoint so a silent outage becomes something you can actually see.
+DATA_HEALTH: Dict[str, Any] = {"quotes_ok": None, "candles_ok": None, "last_error": "", "last_error_at": ""}
+
+
+def market_data_is_live() -> tuple:
+    """(ok, reason) - whether we currently have real broker prices.
+
+    A deployment with no market-data credentials still connects to the same
+    database as every other one, so it can write trades priced from invented
+    values into the real wallet. Preview builds on Vercel do not inherit
+    Production-scoped environment variables, which is exactly how that happens
+    by accident. Every path that opens a position checks this first.
+    """
+    if not oanda_configured():
+        return False, ("No market data provider is configured on this deployment, "
+                       "so prices here are invented. Trades cannot be opened.")
+    snap = snapshot()
+    provider = str(snap.get("provider") or "").lower()
+    if "synthetic" in provider or "failed" in provider:
+        detail = (snap.get("warnings") or [""])[0]
+        return False, f"Live market data is unavailable ({provider}). {detail}".strip()
+    return True, ""
+
+
+def require_live_market_data() -> None:
+    ok, reason = market_data_is_live()
+    if not ok:
+        raise HTTPException(status_code=503, detail=reason)
+
+
+def _note_data_failure(what: str, exc: Exception) -> None:
+    DATA_HEALTH[what] = False
+    DATA_HEALTH["last_error"] = f"{type(exc).__name__}: {exc}"
+    DATA_HEALTH["last_error_at"] = now()
+    log.error("OANDA %s call failed, falling back to invented data: %s", what, exc)
+
+
 START_BALANCE = float(os.getenv("PAPER_STARTING_BALANCE", "10000"))
 MAX_RISK = float(os.getenv("MAX_RISK_PER_TRADE_PCT", "0.5"))
 DAILY_LIMIT = float(os.getenv("MAX_DAILY_LOSS_PCT", "1.5"))
 WEEKLY_LIMIT = float(os.getenv("MAX_WEEKLY_LOSS_PCT", "4.0"))
-MIN_RR = float(os.getenv("MIN_RISK_REWARD", "2.0"))
+# Floor used by the manual position-size calculator's verdict. Kept at or
+# below the scanner's own R:R target, or the calculator would flag the agent's
+# own trades as breaking the rules.
+MIN_RR = float(os.getenv("MIN_RISK_REWARD", "1.5"))
 MIN_CONF = int(os.getenv("MIN_CONFIDENCE_SCORE", "85"))
 ENFORCE_WINDOW = os.getenv("PAPER_TRADING_ENFORCE_WINDOW", "false").lower() == "true"
 # How far apart the 20 and 50 period averages must be, relative to ATR,
@@ -69,7 +113,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 # of guessed or copied from a synthetic test.
 PAIR_STRATEGY_DEFAULTS: Dict[str, Any] = {
     "min_trend_strength": MIN_TREND_STRENGTH,  # SMA20/50 separation required, in ATR multiples
-    "rr": 2.2,                                 # reward:risk target
+    # Reward:risk target - sets how far the take-profit sits, in multiples of
+    # the stop distance. Lowering it books smaller wins but reaches them more
+    # often, since price has less ground to cover before the target. Note this
+    # is NOT an entry filter: it does not change how many setups the scanner
+    # finds, only where each one takes profit.
+    "rr": float(os.getenv("STRATEGY_RR", "1.8")),
     "stop_atr_mult": 1.2,                      # stop distance = ATR * this, floored by min_stop_pips
     "min_stop_pips": 12.0,
     "fallback_stop_pips": 20.0,                # used only when ATR isn't available yet
@@ -625,7 +674,12 @@ def oanda_snapshot() -> Dict[str, Any]:
         bid = float(raw["closeoutBid"])
         ask = float(raw["closeoutAsk"])
         mid = (bid + ask) / 2
-        quotes.append({"pair": pair, "price": rprice(pair, mid), "bid": rprice(pair, bid), "ask": rprice(pair, ask), "spread_pips": round(abs(ask - bid) / pip_size(pair), 2), "timestamp": raw.get("time", now()), "source": "oanda-practice"})
+        # Pass OANDA's own tick time through untouched, and leave it absent if
+        # OANDA didn't send one. Stamping our own clock on a quote of unknown
+        # age is how a Friday-close price ends up looking a second old.
+        # "tradeable" is the broker telling us directly whether this market is
+        # open, which beats inferring it from how stale the price looks.
+        quotes.append({"pair": pair, "price": rprice(pair, mid), "bid": rprice(pair, bid), "ask": rprice(pair, ask), "spread_pips": round(abs(ask - bid) / pip_size(pair), 2), "timestamp": raw.get("time"), "tradeable": bool(raw.get("tradeable", True)), "market_status": str(raw.get("status") or ""), "source": "oanda-practice"})
     return {"provider": "oanda", "generated_at": now(), "quotes": quotes, "warnings": []}
 
 
@@ -634,8 +688,11 @@ def snapshot() -> Dict[str, Any]:
         try:
             live = oanda_snapshot()
             if live["quotes"]:
+                DATA_HEALTH["quotes_ok"] = True
                 return live
+            log.warning("OANDA returned no quotes; using invented data")
         except Exception as exc:
+            _note_data_failure("quotes_ok", exc)
             fb = synthetic_snapshot()
             fb["provider"] = "oanda-failed-fallback"
             fb["warnings"].insert(0, f"OANDA failed: {exc}")
@@ -684,9 +741,13 @@ def get_candles(pair: str) -> List[Dict[str, Any]]:
         try:
             live = oanda_candles(pair)
             if len(live) >= 20:
+                DATA_HEALTH["candles_ok"] = True
                 return live
-        except Exception:
-            pass
+            log.warning("OANDA returned only %d candles for %s; using invented data", len(live), pair)
+        except Exception as exc:
+            # This used to swallow the exception entirely, so an outage that
+            # stopped the agent trading left nothing behind to explain it.
+            _note_data_failure("candles_ok", exc)
     return synthetic_candles(pair)
 
 
@@ -930,7 +991,31 @@ def enabled_strategies(strat: Dict[str, Any]) -> List[str]:
     return valid or ["trend_continuation"]
 
 
-def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None, strategy: Optional[str] = None) -> Dict[str, Any]:
+def executable_entry(pair: str, direction: str, candle_close: float, quote: Optional[Dict[str, Any]] = None) -> tuple:
+    """The price this trade could actually have been opened at.
+
+    A buy lifts the ask, a sell hits the bid. Without this the entry came from
+    the last completed H1 candle's *mid* close, which is both the wrong side of
+    the spread and up to an hour stale - so a position could show a loss the
+    instant it opened, against a price that was never available to trade at.
+
+    Returns (entry, note). Falls back to the candle close when there is no
+    usable quote, which is what the backtester does by design: it replays
+    history and has no live book to lift.
+    """
+    if not quote or direction not in ("buy", "sell"):
+        return candle_close, "candle-close"
+    side = quote.get("ask") if direction == "buy" else quote.get("bid")
+    try:
+        side = float(side)
+    except (TypeError, ValueError):
+        return candle_close, "candle-close"
+    if side <= 0:
+        return candle_close, "candle-close"
+    return side, "executable-quote"
+
+
+def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None, strategy: Optional[str] = None, quote: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     strat = get_pair_strategy(pair, strategy_overrides)
     a = analyse(pair, candles)
     ind = a.get("indicators", {})
@@ -942,7 +1027,10 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     confidence_notes = list(setup["notes"])
 
     conf = max(0, min(96, conf))
-    entry = float(a["price"])
+    # Stop and target are derived from this entry below, so they shift with it
+    # and the stop distance and R:R are unchanged - only the level moves, to
+    # one the market would actually have given us.
+    entry, entry_basis = executable_entry(pair, direction, float(a["price"]), quote)
     pip = pip_size(pair)
     # Stop distance scales with each pair's own recent volatility (ATR) instead
     # of a fixed pip count for every pair regardless of how much it actually
@@ -985,10 +1073,10 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     if KILL_SWITCH["active"]:
         rejects.append(KILL_SWITCH["reason"] or "Kill switch active.")
     status = "trade_candidate" if not rejects else ("no_setup" if direction == "none" else "rejected")
-    return {"pair": pair, "direction": direction, "strategy": setup["strategy"], "setup_type": setup["setup_type"], "setup_label": setup["setup_label"], "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} {setup['entry_reason']}." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "risk_cap": gold_cap, "analysis": a, "blocked_events": [], "source": a.get("data_source") or ("oanda" if oanda_configured() else "synthetic-fallback"), "strategy_config": strat}
+    return {"pair": pair, "direction": direction, "strategy": setup["strategy"], "setup_type": setup["setup_type"], "setup_label": setup["setup_label"], "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} {setup['entry_reason']}." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "entry_basis": entry_basis, "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "risk_cap": gold_cap, "analysis": a, "blocked_events": [], "source": a.get("data_source") or ("oanda" if oanda_configured() else "synthetic-fallback"), "strategy_config": strat}
 
 
-def score_candidates(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+def score_candidates(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None, quote: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """Every enabled strategy's view of this pair, best candidate first.
 
     Candles are fetched once and shared, so adding a strategy costs no extra
@@ -999,7 +1087,7 @@ def score_candidates(pair: str, account_balance: float = START_BALANCE, fixed_un
     strat = get_pair_strategy(pair, strategy_overrides)
     shared_candles = candles if candles is not None else get_candles(pair)
     results = [
-        score_candidate(pair, account_balance, fixed_units, shared_candles, strategy_overrides, name)
+        score_candidate(pair, account_balance, fixed_units, shared_candles, strategy_overrides, name, quote)
         for name in enabled_strategies(strat)
     ]
     return sorted(results, key=lambda c: (c["status"] != "trade_candidate", -c["confidence"]))
@@ -1043,20 +1131,44 @@ def close_trade(user: str, trade_id: str, close_price: float, reason: str) -> Di
     return t
 
 
+def _close_side(quote: Dict[str, Any], direction: str) -> Optional[float]:
+    """The price this position would actually close at.
+
+    A long is closed by selling into the bid; a short by buying at the ask.
+    Testing a stop against the mid triggers it late on both sides, which also
+    made this path disagree with paper_mvp_auto_close - the same trade could
+    be "stopped out" by one checker and still open according to the other.
+    """
+    side = quote.get("bid") if str(direction).lower() == "buy" else quote.get("ask")
+    for value in (side, quote.get("price")):
+        try:
+            price = float(value)
+        except (TypeError, ValueError):
+            continue
+        if price > 0:
+            return price
+    return None
+
+
 def manage_trades(user: str, prices: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+    quotes: Dict[str, Dict[str, Any]] = {}
     if not prices:
         # Only ever close against prices that actually came from the broker.
         # snapshot() silently substitutes synthetic prices when the OANDA call
         # fails, and those are far enough from the real market to stop out
         # every open position at once.
-        prices = {
-            q["pair"]: float(q["price"])
+        quotes = {
+            q["pair"]: q
             for q in snapshot().get("quotes", [])
             if "synthetic" not in str(q.get("source", "")).lower()
         }
+        prices = {pair: float(q["price"]) for pair, q in quotes.items()}
     actions = []
     for t in list_trades(user, "open"):
-        price = prices.get(t["pair"])
+        # Caller-supplied prices are plain mids with no book behind them, so
+        # they are used as-is; a real quote picks the side this trade exits on.
+        quote = quotes.get(t["pair"])
+        price = _close_side(quote, t.get("direction")) if quote else prices.get(t["pair"])
         if price is None:
             continue
         if t["direction"] == "buy":

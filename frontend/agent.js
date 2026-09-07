@@ -881,7 +881,7 @@ function renderWalletSummary(wallet) {
     el.innerHTML = `
         <div class="wallet-summary-grid">
           <div class="wallet-summary-cell"><span class="muted small">Balance</span><strong>${formatWalletMoney(wallet.balance)}</strong></div>
-          <div class="wallet-summary-cell"><span class="muted small">Cash (deposits - withdrawals)</span><strong>${formatWalletMoney(wallet.cash_balance)}</strong></div>
+          <div class="wallet-summary-cell"><span class="muted small">Cash (start + deposits - withdrawals)</span><strong>${formatWalletMoney(wallet.cash_balance)}</strong></div>
           <div class="wallet-summary-cell"><span class="muted small">Realised P&amp;L</span><strong style="color:${pnlColor}">${formatWalletMoney(wallet.realised_pnl)}</strong></div>
           <div class="wallet-summary-cell"><span class="muted small">Total deposited</span><strong>${formatWalletMoney(wallet.total_deposits)}</strong></div>
           <div class="wallet-summary-cell"><span class="muted small">Total withdrawn</span><strong>${formatWalletMoney(wallet.total_withdrawals)}</strong></div>

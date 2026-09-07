@@ -245,6 +245,7 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
 
 @app.post("/api/agent/trades/quick-open")
 async def quick_open_personal_trade(req: QuickOpenRequest, user: str = Depends(base.current_user)):
+    base.require_live_market_data()
     saved = _save_personal_trade(user, req)
     return {
         "trade": saved,
@@ -258,6 +259,7 @@ async def quick_open_personal_trade(req: QuickOpenRequest, user: str = Depends(b
 
 @app.post("/api/agent/trades/quick-open-ai")
 async def quick_open_ai_trade(req: AiQuickOpenRequest, user: str = Depends(base.current_user)):
+    base.require_live_market_data()
     pair = _pair(req.pair)
     candidate = base.score_candidate(pair, req.account_balance, req.fixed_units)
     if candidate.get("status") != "trade_candidate":

@@ -41,6 +41,12 @@
   </div>
 </header>
 
+<!-- Shown only when this deployment has no live market data. A build without
+     market-data credentials still talks to the same database as every other
+     one, so without this the screen looks identical to a live one while every
+     price on it is invented. -->
+<div id="dataSourceBanner" class="data-source-banner" hidden></div>
+
 <nav class="agent-nav">
   <button class="agent-tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Agent Dashboard</button>
   <button class="agent-tab" data-tab="scanner" onclick="switchTab('scanner')">Scanner</button>
@@ -385,5 +391,6 @@
 <script src="/static/agent_journal_live.js"></script>
 <script src="/static/agent_trade_repair.js"></script>
 <script src="/static/agent_control.js"></script>
+<script src="/static/data_source_banner.js"></script>
 </body>
 </html>
