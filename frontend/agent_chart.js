@@ -600,22 +600,27 @@
   }
 
   /* ---- running P/L -------------------------------------------------------
-   * Replaces the old six-cell "Paper Account" grid with a trade-by-trade
-   * ledger in the shape of MT4's History screen: one row per trade showing
-   * what it did, then the running totals underneath.
+   * Replaces the old six-cell "Paper Account" grid with a position-by-position
+   * ledger in the shape of MT4's Trade tab: one row per OPEN position showing
+   * what it is currently worth, then the account totals underneath.
    *
-   * Open rows are priced on the side they would close at and are marked as
-   * such; a position whose quote is invented shows no figure rather than a
-   * plausible one, and is left out of the totals with a note saying so.
+   * Open positions only, deliberately. Listing closed trades here made this a
+   * second copy of the journal, which already lives on the Dashboard and does
+   * the job better. What this panel is for is the question the journal cannot
+   * answer: what am I in right now, and what is it doing. Closed trades still
+   * reach the totals through Realised, which is what Balance is built from.
+   *
+   * Rows are priced on the side they would close at; a position whose quote is
+   * invented shows no figure rather than a plausible one, and is left out of
+   * Open P/L with a note saying so.
    */
   function ledgerRow(trade) {
     const pair = trade.pair || activeChartMeta.pair;
-    const open = String(trade.status || '').toLowerCase() === 'open';
     const entry = entryValue(trade);
-    const exit = open ? closeSidePrice(pair, trade.direction)
-                      : num(trade.close_price, num(trade.exit_price, null));
-    const pnl = open ? estimateOpenTradeMoney(trade) : realisedMoney(trade);
-    const priced = !(open && exit === null);
+    const exit = closeSidePrice(pair, trade.direction);
+    const pnl = estimateOpenTradeMoney(trade);
+    const priced = exit !== null;
+    const open = true;
     const dir = String(trade.direction || '').toLowerCase();
     const units = num(trade.position_units, null);
 
@@ -652,20 +657,19 @@
     const balance = startBalance + realised;
     const equity = balance + openPnl;
 
-    // Newest first, open trades at the top - they are the ones still moving.
-    const rows = [...openTradesCache, ...closed.slice().reverse()].slice(0, 40);
+    const rows = openTradesCache;
 
     panel.innerHTML = `
       <div class="ledger-head">
         <div>
           <div class="chart-account-title">Running P/L</div>
-          <div class="chart-account-sub">${openTradesCache.length} open &middot; ${closed.length} closed</div>
+          <div class="chart-account-sub">${openTradesCache.length} open position${openTradesCache.length === 1 ? '' : 's'}</div>
         </div>
         <button class="btn-secondary ledger-refresh" onclick="refreshAgentAccountPanel()">Refresh</button>
       </div>
       <div class="ledger-rows">${
         rows.length ? rows.map(ledgerRow).join('')
-                    : '<div class="muted small">No trades yet.</div>'}</div>
+                    : '<div class="muted small">No open positions.</div>'}</div>
       <div class="ledger-totals">
         <div><span>Realised</span><strong class="${pnlClass(realised)}">${formatMoney(realised)}</strong></div>
         <div><span>Open P/L</span><strong class="${pnlClass(openPnl)}">${formatMoney(openPnl)}</strong></div>

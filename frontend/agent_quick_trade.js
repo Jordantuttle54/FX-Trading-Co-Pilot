@@ -384,8 +384,10 @@
           grid-column: 1 !important;
           grid-row: auto !important;
         }
-        #tab-trades #agentChartPanel #chartAccountPanel { order: 2; }
-        #tab-trades #agentChartPanel #quickTradePanel { order: 3; }
+        /* Retired: the desk's right-hand column orders these itself, ticket
+           above ledger, in trading_desk.css. */
+        #tab-trades-legacy #agentChartPanel #chartAccountPanel { order: 2; }
+        #tab-trades-legacy #agentChartPanel #quickTradePanel { order: 3; }
       }
       @media (max-width: 760px) {
         .quick-trade-grid,
