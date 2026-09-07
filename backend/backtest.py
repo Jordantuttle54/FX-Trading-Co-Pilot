@@ -65,12 +65,21 @@ def _historical_candles(pair: str, count: int) -> List[Dict[str, Any]]:
                 out.append({"open": float(m["o"]), "high": float(m["h"]), "low": float(m["l"]), "close": float(m["c"])})
             if len(out) >= MIN_CANDLES:
                 return out
-        except Exception:
-            pass
+        except Exception as exc:
+            # Swallowing this silently meant a backtest could run entirely on
+            # invented history and report its results as though they were real.
+            analysis.log.error("Backtest candle fetch failed for %s, falling back to invented history: %s", pair, exc)
     # Fallback only - synthetic history has no relation to real market
     # behaviour, so results from this path are for smoke-testing the
-    # simulator itself, not for judging the strategy.
+    # simulator itself, not for judging the strategy. synthetic_candles tags
+    # every candle, which is what is_synthetic() below reads.
+    analysis.log.warning("Backtesting %s on invented history - results are meaningless for judging the strategy.", pair)
     return analysis.synthetic_candles(pair, count)
+
+
+def is_synthetic(candles: List[Dict[str, Any]]) -> bool:
+    """Whether this history was invented rather than fetched from the broker."""
+    return any(c.get("synthetic") for c in candles[:5])
 
 
 def _simulate_pair_trades(pair: str, candles: List[Dict[str, Any]], lookback: int, strategy_overrides: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -172,19 +181,28 @@ def run_backtest(pairs: List[str], candle_count: int, lookback: int) -> Dict[str
     per_pair = []
     all_trades: List[Dict[str, Any]] = []
     warnings = []
+    synthetic_pairs = []
     for pair in pairs:
         candles = _historical_candles(pair, candle_count)
+        if is_synthetic(candles):
+            synthetic_pairs.append(pair)
+            warnings.append(f"{pair}: RAN ON INVENTED HISTORY - these results say nothing about the strategy.")
         if len(candles) < lookback + 10:
             warnings.append(f"{pair}: only {len(candles)} candles available - results may be thin.")
         trades = _simulate_pair_trades(pair, candles, lookback)
         all_trades.extend(trades)
-        per_pair.append(_summarize(pair, trades))
+        per_pair.append({**_summarize(pair, trades), "synthetic_history": pair in synthetic_pairs})
     overall = _summarize("ALL", all_trades)
     return {
         "generated_at": analysis.now(),
         "candle_count": candle_count,
         "lookback": lookback,
-        "data_provider": "oanda" if analysis.oanda_configured() else "synthetic-fallback",
+        # Reported from the candles actually used, not from whether credentials
+        # happen to exist - a configured provider whose call fails still lands
+        # on invented history, and used to report itself as "oanda".
+        "data_provider": "synthetic-fallback" if synthetic_pairs else "oanda",
+        "synthetic_pairs": synthetic_pairs,
+        "trustworthy": not synthetic_pairs,
         "warnings": warnings,
         "per_pair": per_pair,
         "overall": overall,

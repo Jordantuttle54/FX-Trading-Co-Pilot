@@ -201,7 +201,8 @@ async def deposit_wallet(req: WalletTransactionIn, user: str = Depends(base.curr
         try:
             compat.compat_add_audit(user, "wallet_deposit", "deposited", f"Deposited {req.amount:.2f} to paper wallet.", "", None)
         except Exception:
-            pass
+            # Never let a lost audit line break a trade - but never lose it quietly.
+            base.log.warning("Audit entry could not be written", exc_info=True)
         return wallet_summary(user)
     except WalletStorageUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -216,7 +217,8 @@ async def withdraw_wallet(req: WalletTransactionIn, user: str = Depends(base.cur
         try:
             compat.compat_add_audit(user, "wallet_withdraw", "withdrawn", f"Withdrew {req.amount:.2f} from paper wallet.", "", None)
         except Exception:
-            pass
+            # Never let a lost audit line break a trade - but never lose it quietly.
+            base.log.warning("Audit entry could not be written", exc_info=True)
         return wallet_summary(user)
     except WalletStorageUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

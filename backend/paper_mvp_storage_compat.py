@@ -404,7 +404,8 @@ async def agent_execute_storage_compat(req: AgentExecuteCompatRequest, user: str
     try:
         compat_add_audit(user, "paper_execute", "opened", "Paper trade opened. No real order was sent.", req.pair, str(trade["id"]))
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
     return {
         "trade_id": trade["id"],
         "execution": {"mode": "paper", "status": "filled", "order_id": trade.get("order_id"), "live_money": False},

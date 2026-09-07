@@ -462,7 +462,8 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
                 pair, saved.get("id"),
             )
         except Exception:
-            pass
+            # Never let a lost audit line break a trade - but never lose it quietly.
+            base.log.warning("Audit entry could not be written", exc_info=True)
 
     return finish({
         "trigger": trigger, "dry_run": dry_run, "halted": False, "halt_reason": None,
@@ -550,7 +551,8 @@ async def write_agent_config(req: AgentConfigRequest, user: str = Depends(base.c
             "", None,
         )
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
     return {"config": config, "saved": True}
 
 

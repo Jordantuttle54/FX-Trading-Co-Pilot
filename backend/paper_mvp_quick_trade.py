@@ -239,7 +239,8 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
     try:
         compat.compat_add_audit(user, "personal_quick_open", "opened", f"Personal quick {direction.upper()} paper trade opened on {pair}.", pair, saved.get("id"))
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
     return saved
 
 
@@ -282,7 +283,8 @@ async def quick_open_ai_trade(req: AiQuickOpenRequest, user: str = Depends(base.
     try:
         compat.compat_add_audit(user, "ai_quick_open", "opened", f"AI quick paper trade opened on {pair}.", pair, saved.get("id"))
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
     return {
         "trade": saved,
         "trade_id": saved.get("id"),
@@ -320,7 +322,8 @@ async def quick_close_trade(trade_id: str, req: QuickCloseRequest, user: str = D
     try:
         compat.compat_add_audit(user, "quick_close", "closed", f"Quick close at market: {result_r:+.2f}R / {result_money:+.2f}.", pair, trade_id)
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
     return {
         "closed_trade": trade,
         "close_price": close_price,

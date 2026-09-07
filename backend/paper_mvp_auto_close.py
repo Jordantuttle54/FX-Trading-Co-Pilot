@@ -127,7 +127,8 @@ def _close_trade_at_market(user: str, trade: Dict[str, Any], quote: Dict[str, An
             trade.get("id"),
         )
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
 
     named = names.name_trade(user, trade)
     return {

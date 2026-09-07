@@ -76,5 +76,25 @@ if sim:
 else:
     print("note: no simulated trades on this synthetic series - spread maths unexercised")
 
+# ---- a backtest must say when it ran on invented history -------------------
+# The fetch failure used to be swallowed, and data_provider was inferred from
+# whether credentials existed - so a failed call reported itself as "oanda"
+# while every number came from fiction.
+synth = base.synthetic_candles("GBP/USD", 400)
+check("invented history is detectable", backtest.is_synthetic(synth) is True)
+real = [{k: v for k, v in c.items() if k != "synthetic"} for c in synth]
+check("real history is not flagged", backtest.is_synthetic(real) is False)
+
+_orig = backtest._historical_candles
+backtest._historical_candles = lambda pair, count: base.synthetic_candles(pair, count)
+report = backtest.run_backtest(["GBP/USD"], 400, 120)
+check("a backtest on invented history is not reported as oanda",
+      report["data_provider"] == "synthetic-fallback")
+check("and is explicitly marked untrustworthy", report["trustworthy"] is False)
+check("and names the affected pair", report["synthetic_pairs"] == ["GBP/USD"])
+check("and warns in words a person will read",
+      any("INVENTED HISTORY" in w for w in report["warnings"]))
+backtest._historical_candles = _orig
+
 print(); print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

@@ -49,6 +49,14 @@ def calibrate_pair(pair: str, candle_count: int, lookback: int) -> Dict[str, Any
     candle_count = max(backtest.MIN_CANDLES, min(int(candle_count), backtest.MAX_CANDLES))
     lookback = max(30, min(int(lookback), 200))
     candles = backtest._historical_candles(pair, candle_count)
+    # Calibration output is meant to be applied to live trading settings, so
+    # producing numbers from invented history is worse than producing none.
+    if backtest.is_synthetic(candles):
+        raise HTTPException(
+            status_code=503,
+            detail=(f"Could not fetch real {pair} history, so calibration would be tuning "
+                    "against invented data. Refusing rather than returning settings that look real."),
+        )
 
     current = analysis.get_pair_strategy(pair)
     results: List[Dict[str, Any]] = []
@@ -73,7 +81,7 @@ def calibrate_pair(pair: str, candle_count: int, lookback: int) -> Dict[str, Any
         "pair": pair,
         "candle_count": candle_count,
         "lookback": lookback,
-        "data_provider": "oanda" if analysis.oanda_configured() else "synthetic-fallback",
+        "data_provider": "oanda",  # guaranteed by the synthetic-history check above
         "combos_tested": len(results),
         "min_trades_for_trust": MIN_TRADES_FOR_TRUST,
         "current_config": current,

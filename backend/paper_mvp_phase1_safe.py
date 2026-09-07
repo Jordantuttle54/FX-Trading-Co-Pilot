@@ -93,6 +93,7 @@ async def agent_manual_close_trade_phase1_safe(
     try:
         compat.compat_add_audit(user, "manual_close", "closed", trade["close_reason"], str(trade.get("pair", "")), trade_id)
     except Exception:
-        pass
+        # Never let a lost audit line break a trade - but never lose it quietly.
+        base.log.warning("Audit entry could not be written", exc_info=True)
 
     return {"closed_trade": trade, "storage_mode": compat.compat_storage_mode()}

@@ -324,7 +324,19 @@
   function tradeLabel(trade) {
     const existing = trade.display_name || trade.friendly_name || trade.trade_name || trade.short_name || trade.label || '';
     if (existing) return String(existing);
-    const origin = String(trade.trade_origin || trade.origin || trade.source || '').toLowerCase().includes('ai') ? 'AI' : 'Personal';
+    // Mirrors ORIGIN_LABELS in backend/paper_mvp_trade_names.py. The old test
+    // asked whether the origin merely contained the letters "ai", which is
+    // true of "ai_quick_open" (a trade you placed) and false of "agent_auto"
+    // (one the agent placed on its own) - so it labelled both backwards.
+    // Only the agent acting unattended is "AI"; anything you clicked is yours.
+    const ORIGIN_LABELS = {
+      agent_auto: 'AI',
+      ai_quick_open: 'Personal',
+      personal_quick_open: 'Personal',
+      scanner_manual_execute: 'Personal',
+    };
+    const rawOrigin = String(trade.trade_origin || trade.origin || '').toLowerCase();
+    const origin = trade.trade_origin_label || ORIGIN_LABELS[rawOrigin] || 'Unknown';
     const pair = trade.pair || activeChartMeta.pair || '';
     const raw = String(trade.direction || '').toLowerCase();
     const direction = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
