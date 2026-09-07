@@ -14,6 +14,7 @@ SAFETY RULE (spec Sec4 and Sec7):
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -30,6 +31,44 @@ MODE_DEMO = "oanda_demo"
 MODE_LIVE = "oanda_live"  # LOCKED - must not be reachable in MVP
 
 OANDA_PRACTICE_URL = "https://api-fxpractice.oanda.com"
+
+# The spread has to be small next to the stop, or the trade starts underwater
+# by a meaningful fraction of the risk it was sized for. At 0.33 a 12 pip stop
+# refuses anything above 4 pips. This is not a theoretical limit: an attempt to
+# open GBP/USD at the 17:00 New York rollover met a 19.5 pip spread against a
+# 12 pip stop - wider than the entire stop - and would have opened roughly
+# 1.6R down had the broker filled it. OANDA declined; nothing here did.
+MAX_SPREAD_FRACTION_OF_STOP = float(os.getenv("MAX_SPREAD_FRACTION_OF_STOP", "0.33"))
+
+# OANDA cancels an order it cannot fill rather than rejecting it, and puts the
+# why in a machine code. Passing that code straight to the screen is barely
+# better than saying nothing, so the ones that actually happen get sentences.
+CANCEL_REASONS = {
+    "MARKET_HALTED": (
+        "the market was halted. This normally means the 17:00 New York "
+        "rollover or the weekend close - spreads blow out and the broker "
+        "stops filling for a few minutes either side."
+    ),
+    "INSUFFICIENT_LIQUIDITY": (
+        "there was not enough liquidity to fill the whole order at once."
+    ),
+    "INSUFFICIENT_MARGIN": "the account did not have enough margin.",
+    "FIFO_VIOLATION": "it would have broken the broker's FIFO rule.",
+    "TIME_IN_FORCE_EXPIRED": "it could not be filled immediately and expired.",
+    "BOUNDS_VIOLATION": "the price moved outside the bounds set on the order.",
+    "STOP_LOSS_ON_FILL_LOSS": (
+        "the stop would already have been hit at the fill price - the spread "
+        "was wider than the stop distance."
+    ),
+}
+
+
+def _explain_cancel(reason: str) -> str:
+    """OANDA's cancel code as a sentence, with the code kept for the record."""
+    text = CANCEL_REASONS.get(reason)
+    return f"OANDA did not fill the order: {text} ({reason})" if text else (
+        f"OANDA did not fill the order ({reason or 'no reason given'})."
+    )
 
 
 def _active_mode() -> str:
@@ -131,6 +170,22 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
 
         stop_distance = abs(candidate["entry"] - candidate["stop_loss"])
         target_distance = abs(candidate["take_profit"] - candidate["entry"])
+
+        # Refuse a spread that is large next to the stop. The position was
+        # sized so that hitting the stop costs 1R; crossing a wide spread to
+        # get in spends part of that R before the trade has done anything, and
+        # a spread wider than the stop itself means the stop is already behind
+        # price at the moment of the fill. There was no check here at all
+        # before - the only thing that stopped a 19.5 pip spread going through
+        # was the broker declining it.
+        spread = abs(float(live["closeoutAsk"]) - float(live["closeoutBid"]))
+        if stop_distance > 0 and spread > stop_distance * MAX_SPREAD_FRACTION_OF_STOP:
+            pip = 0.01 if "JPY" in candidate["pair"].upper() else 0.0001
+            raise RuntimeError(
+                f"Spread is {spread / pip:.1f} pips against a {stop_distance / pip:.1f} pip stop "
+                f"({spread / stop_distance:.0%} of the risk). Refusing to open - "
+                "this is normal around the 17:00 New York rollover and the weekend close."
+            )
         if candidate["direction"] == "buy":
             stop_loss = reference_price - stop_distance
             take_profit = reference_price + target_distance
@@ -175,8 +230,18 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
 
         fill = data.get("orderFillTransaction", {})
         if not fill:
-            reject = data.get("orderRejectTransaction", {})
-            raise RuntimeError(reject.get("rejectReason") or "OANDA did not return a fill for this order.")
+            # Three different shapes come back for "no fill" and only one was
+            # being read, so every other case surfaced as the generic "OANDA
+            # did not return a fill for this order" - a message that tells you
+            # nothing about whether the market was shut, the margin was short
+            # or the price had moved.
+            cancel = data.get("orderCancelTransaction") or {}
+            reject = data.get("orderRejectTransaction") or {}
+            if cancel:
+                raise RuntimeError(_explain_cancel(str(cancel.get("reason", ""))))
+            if reject:
+                raise RuntimeError(_explain_cancel(str(reject.get("rejectReason", ""))))
+            raise RuntimeError("OANDA did not return a fill for this order.")
 
         now = datetime.now(timezone.utc).isoformat()
 

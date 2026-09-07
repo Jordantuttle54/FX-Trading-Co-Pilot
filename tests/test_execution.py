@@ -79,6 +79,72 @@ check("a sell is sent as negative units", int(sent["order"]["units"]) < 0)
 check(f"a sell's risk is as sized ({round(abs(res_sell['stop_loss'] - res_sell['entry']), 5)})",
       round(abs(res_sell["stop_loss"] - res_sell["entry"]), 5) == STOP_DIST)
 
+# --- the spread guard -------------------------------------------------------
+# The real failure this came from: GBP/USD at the 17:00 New York rollover
+# quoted a 19.5 pip spread against a 12 pip stop. Nothing in this file
+# stopped it; only the broker declining the fill did.
+#
+# _place_oanda_demo_trade catches its own failures and reports them as
+# {"status": "error", "error": ...} rather than raising - the endpoint turns
+# that into a 502 - so these read the returned dict.
+class WideSpreadClient(FakeClient):
+    def get(self, url, params=None, headers=None):
+        # 19.5 pips wide, against CANDIDATE's 20 pip stop.
+        return FakeResponse({"prices": [{"closeoutAsk": "1.30105", "closeoutBid": "1.29910"}]})
+
+execution.httpx.Client = WideSpreadClient
+wide = execution._place_oanda_demo_trade(CANDIDATE)
+check("a spread wider than the guard does not open", wide["status"] != "filled")
+check("the refusal explains itself", "Refusing to open" in (wide["error"] or ""))
+check(f"and says how wide, in pips ({wide['error'].split(' against')[0]})",
+      "19.5 pips" in wide["error"])
+
+class NormalSpreadClient(FakeClient):
+    def get(self, url, params=None, headers=None):
+        # 2 pips against a 20 pip stop - 10% of the risk, well inside the cap.
+        return FakeResponse({"prices": [{"closeoutAsk": "1.30010", "closeoutBid": "1.29990"}]})
+
+execution.httpx.Client = NormalSpreadClient
+check("a normal spread still trades", execution._place_oanda_demo_trade(CANDIDATE)["status"] == "filled")
+
+# A JPY pair prices to 3 decimals; the guard must read pips in that scale
+# rather than reporting a 20 pip spread as 2000.
+jpy = {**CANDIDATE, "pair": "GBP/JPY", "entry": 195.000, "stop_loss": 194.800, "take_profit": 195.400}
+class JpyWideClient(FakeClient):
+    def get(self, url, params=None, headers=None):
+        return FakeResponse({"prices": [{"closeoutAsk": "195.150", "closeoutBid": "194.950"}]})
+
+execution.httpx.Client = JpyWideClient
+jpy_result = execution._place_oanda_demo_trade(jpy)
+check("a wide JPY spread does not open", jpy_result["status"] != "filled")
+check(f"JPY pips are read at 0.01 ({jpy_result['error'].split(' against')[0]})",
+      "20.0 pips" in jpy_result["error"])
+
+# --- a cancelled order says why ---------------------------------------------
+# OANDA cancels rather than rejects when it cannot fill, and only the reject
+# shape was being read - so a halted market surfaced as "did not return a
+# fill", which says nothing about what to do next.
+class HaltedClient(NormalSpreadClient):
+    def post(self, url, headers=None, json=None):
+        return FakeResponse({"orderCancelTransaction": {"reason": "MARKET_HALTED"}})
+
+execution.httpx.Client = HaltedClient
+halted = execution._place_oanda_demo_trade(CANDIDATE)
+check("a cancelled order does not open", halted["status"] != "filled")
+check("a cancelled order explains itself", "market was halted" in halted["error"])
+check("and keeps OANDA's own code", "MARKET_HALTED" in halted["error"])
+check("and is not the old blank message", "did not return a fill" not in halted["error"])
+
+class UnknownCancelClient(NormalSpreadClient):
+    def post(self, url, headers=None, json=None):
+        return FakeResponse({"orderCancelTransaction": {"reason": "SOMETHING_NEW"}})
+
+execution.httpx.Client = UnknownCancelClient
+check("an unmapped reason still reaches the user",
+      "SOMETHING_NEW" in execution._place_oanda_demo_trade(CANDIDATE)["error"])
+
+execution.httpx.Client = FakeClient
+
 # --- live trading stays locked ---------------------------------------------
 execution.settings.enable_live_trading = True
 try:
