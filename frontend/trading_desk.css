@@ -294,7 +294,7 @@
 #tradeDesk .rejected-list,
 #tradeDesk .no-setup-list {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
   gap: 8px;
 }
 #tradeDesk .section-heading { margin: 4px 0 10px; font-size: 14px; }
@@ -363,38 +363,54 @@
 #tradeDesk .scanner-star { font-size: 15px; line-height: 1; }
 #tradeDesk .scanner-card-pair { margin: 0; }
 
-/* Rejected / no-setup cards. Compact on purpose: these are the ones you skim
-   past, so they get less weight than an approved setup, not the same. */
+/* Rejected / no-setup cards. These are the ones you skim past: pair, how
+   confident, and the one line saying why not. Narrow enough that a scan's
+   worth of them sits on a single row instead of running down the page.
+
+   Three things are hidden rather than shrunk. The sparkline is the same
+   hardcoded nine-point polyline on every card - it is not that pair's price,
+   so it is decoration wearing the clothes of data, and at this size it would
+   be a smudge either way. The divider and the "Reason" label then cost two
+   more rows to introduce a sentence that introduces itself. */
 #tradeDesk .scanner-reject-card {
   display: grid;
-  gap: 5px;
-  padding: 9px 11px;
+  gap: 3px;
+  padding: 8px 10px;
   border: 1px solid var(--border, #2a3547);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg2, #161d29);
   min-width: 0;
+}
+#tradeDesk .scanner-reject-card .scanner-sparkline,
+#tradeDesk .scanner-reject-card .scanner-reject-divider,
+#tradeDesk .scanner-reject-card .scanner-reason-label { display: none; }
+#tradeDesk .scanner-reject-card p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted, #8b9ab0);
 }
 #tradeDesk .scanner-reject-top {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 #tradeDesk .scanner-reject-x {
   color: var(--red, #f85149);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
 }
-#tradeDesk .scanner-reject-pair { font-size: 13.5px; font-weight: 700; }
+#tradeDesk .scanner-reject-pair { font-size: 12.5px; font-weight: 700; }
 #tradeDesk .scanner-reject-score {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted, #8b9ab0);
   font-variant-numeric: tabular-nums;
 }
 #tradeDesk .scanner-reject-score strong { color: var(--text, #e6edf6); }
 #tradeDesk .scanner-reject-trend {
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: var(--text-muted, #8b9ab0);
 }
 #tradeDesk .scanner-sparkline {
