@@ -77,5 +77,50 @@ check("a trade with no recorded origin is Unknown, not AI", label(setup_label="W
 check("a setup containing the letters 'ai' is not mislabelled AI",
       label(setup_label="Waiting for available retest") == "Unknown")
 
+# ---- the loss limits must stop a person, not just the agent ---------------
+# These were reported as a hardcoded 0.0 by every status endpoint and enforced
+# only inside the agent, so you could keep opening trades by hand well past the
+# daily limit printed on your own Risk Rules card.
+base.TRADES.clear()
+base.snapshot = lambda: {"provider": "oanda", "quotes": [
+    {"pair": "GBP/USD", "price": 1.30, "bid": 1.2999, "ask": 1.3001,
+     "timestamp": base.now(), "tradeable": True, "source": "oanda-practice"}]}
+
+clean = base.trading_allowed(USER)
+check("with no losses, trading is allowed", clean["allowed"] is True)
+check("and the daily loss reads zero honestly", clean["daily_loss_pct"] == 0.0)
+
+# A loss big enough to breach the 1.5% daily limit on the starting balance.
+breach = round(base.START_BALANCE * (base.DAILY_LIMIT / 100) * 1.2, 2)
+base.TRADES.append({"id": "big", "user_name": USER, "status": "closed",
+                    "pair": "GBP/USD", "direction": "buy", "result_r": -1.0,
+                    "result_money": -breach, "risk_amount": 50.0,
+                    "created_at": base.now(), "closed_at": base.now()})
+
+state = base.trading_allowed(USER)
+check(f"a real daily loss is measured ({state['daily_loss_pct']}%)", state["daily_loss_pct"] > 0)
+check("it is no longer reported as zero", state["daily_loss_pct"] != 0.0)
+check("the daily limit registers as breached", state["daily_breached"] is True)
+check("trading is refused", state["allowed"] is False)
+check("and the reason names the limit", "Daily loss limit" in (state["reason"] or ""))
+
+for path, body in [
+    ("/api/agent/trades/quick-open",
+     {"pair": "GBP/USD", "direction": "buy", "entry": 1.30, "stop_loss": 1.29, "take_profit": 1.32}),
+    ("/api/agent/trades/quick-open-ai", {"pair": "GBP/USD"}),
+    ("/api/agent/execute", {"pair": "GBP/USD"}),
+]:
+    r = client.post(path, json=body, headers=H)
+    check(f"{path} refuses past the daily limit ({r.status_code})", r.status_code == 403)
+
+check("no trade was opened past the limit",
+      not any(t.get("status") == "open" for t in base.TRADES))
+
+# And the status endpoint must show the real figure, not 0.0
+status = client.get("/api/agent/status", headers=H).json()
+ta = status.get("trading_allowed", {})
+check(f"status reports the real daily loss ({ta.get('daily_loss_pct')}%)", ta.get("daily_loss_pct", 0) > 0)
+check("status reports trading as blocked", ta.get("allowed") is False)
+
 print(); print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

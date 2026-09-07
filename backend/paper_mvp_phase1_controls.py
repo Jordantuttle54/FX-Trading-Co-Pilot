@@ -104,21 +104,16 @@ async def agent_status_phase1(user: str = Depends(base.current_user)):
         "session": base.session_label(),
         "open_trade_count": len(open_trades),
         "open_trades": open_trades,
-        "trading_allowed": {
-            "allowed": not base.KILL_SWITCH["active"],
-            "reason": base.KILL_SWITCH["reason"] if base.KILL_SWITCH["active"] else None,
-            "daily_loss_pct": 0.0,
-            "weekly_loss_pct": 0.0,
-            "daily_limit": base.DAILY_LIMIT,
-            "weekly_limit": base.WEEKLY_LIMIT,
-        },
+        "trading_allowed": base.trading_allowed(user),
     }
 
 
 @app.post("/api/agent/execute")
 async def agent_execute_phase1(req: AgentExecutePhase1Request, user: str = Depends(base.current_user)):
-    if base.KILL_SWITCH["active"]:
-        raise HTTPException(status_code=403, detail=base.KILL_SWITCH["reason"] or "Kill switch active")
+    # Checked the kill switch only, so the daily and weekly loss limits - the
+    # ones printed on the Risk Rules card - were never enforced on anything a
+    # person opened. The agent stopped at them; you did not.
+    base.require_trading_allowed(user)
 
     # Always price and validate on the server. This previously took the
     # candidate the browser posted whenever its pair matched, so the client
@@ -208,13 +203,7 @@ async def agent_execute_phase1(req: AgentExecutePhase1Request, user: str = Depen
 async def agent_open_trades_phase1(user: str = Depends(base.current_user)):
     return {
         "open_trades": compat.compat_list_trades(user, "open"),
-        "trading_allowed": {
-            "allowed": not base.KILL_SWITCH["active"],
-            "daily_loss_pct": 0.0,
-            "weekly_loss_pct": 0.0,
-            "daily_limit": base.DAILY_LIMIT,
-            "weekly_limit": base.WEEKLY_LIMIT,
-        },
+        "trading_allowed": base.trading_allowed(user),
         "kill_switch": base.KILL_SWITCH["active"],
         "storage_mode": compat.compat_storage_mode(),
     }

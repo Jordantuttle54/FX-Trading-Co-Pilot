@@ -41,6 +41,89 @@ log = logging.getLogger("fx")
 DATA_HEALTH: Dict[str, Any] = {"quotes_ok": None, "candles_ok": None, "last_error": "", "last_error_at": ""}
 
 
+def closed_since(user: str, since: datetime) -> List[Dict[str, Any]]:
+    out = []
+    for t in list_trades(user, "closed"):
+        raw = t.get("closed_at") or t.get("updated_at") or t.get("created_at") or ""
+        try:
+            when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        if when >= since:
+            out.append(t)
+    return out
+
+
+def loss_limit_state(user: str, balance: Optional[float] = None) -> Dict[str, Any]:
+    """Realised loss today and this week, against the configured limits.
+
+    Every status endpoint used to report these as a hardcoded 0.0 - so the
+    screen said "0.0% of 1.5%" no matter how much the day had actually lost.
+    Only the agent computed them, and only for itself, which left the limits
+    unenforced on anything a person opened by hand.
+    """
+    from datetime import timedelta
+
+    now_dt = datetime.now(timezone.utc)
+    day_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = day_start - timedelta(days=day_start.weekday())
+    if balance is None:
+        balance = account_balance_for(user)
+    balance = max(1.0, float(balance))
+
+    daily_pnl = round(sum(float(t.get("result_money") or 0) for t in closed_since(user, day_start)), 2)
+    weekly_pnl = round(sum(float(t.get("result_money") or 0) for t in closed_since(user, week_start)), 2)
+    daily_loss_pct = round(max(0.0, -daily_pnl) / balance * 100, 3)
+    weekly_loss_pct = round(max(0.0, -weekly_pnl) / balance * 100, 3)
+
+    return {
+        "daily_pnl": daily_pnl,
+        "weekly_pnl": weekly_pnl,
+        "daily_loss_pct": daily_loss_pct,
+        "weekly_loss_pct": weekly_loss_pct,
+        "daily_limit": DAILY_LIMIT,
+        "weekly_limit": WEEKLY_LIMIT,
+        "daily_breached": daily_loss_pct >= DAILY_LIMIT,
+        "weekly_breached": weekly_loss_pct >= WEEKLY_LIMIT,
+    }
+
+
+def account_balance_for(user: str) -> float:
+    """Wallet balance, falling back to the starting balance before any trades."""
+    try:
+        from . import paper_mvp_wallet as wallet
+        return float(wallet.wallet_summary(user).get("balance") or START_BALANCE)
+    except Exception:
+        return START_BALANCE
+
+
+def trading_allowed(user: str) -> Dict[str, Any]:
+    """The single answer to "may a new position be opened right now?"."""
+    limits = loss_limit_state(user)
+    if KILL_SWITCH["active"]:
+        reason = KILL_SWITCH["reason"] or "Kill switch active."
+    elif limits["daily_breached"]:
+        reason = (f"Daily loss limit reached ({limits['daily_loss_pct']}% of {DAILY_LIMIT}%). "
+                  "No new trades today.")
+    elif limits["weekly_breached"]:
+        reason = (f"Weekly loss limit reached ({limits['weekly_loss_pct']}% of {WEEKLY_LIMIT}%). "
+                  "No new trades this week.")
+    else:
+        reason = None
+    return {"allowed": reason is None, "reason": reason, **limits}
+
+
+def require_trading_allowed(user: str) -> Dict[str, Any]:
+    """The loss limits were only ever enforced for the agent. A person could
+    keep opening trades well past the daily limit their own rules set."""
+    state = trading_allowed(user)
+    if not state["allowed"]:
+        raise HTTPException(status_code=403, detail=state["reason"])
+    return state
+
+
 def market_data_is_live() -> tuple:
     """(ok, reason) - whether we currently have real broker prices.
 
@@ -1330,7 +1413,7 @@ async def agent_manage(req: ManageTradesRequest, user: str = Depends(current_use
 
 @app.get("/api/agent/trades/open")
 async def agent_open_trades(user: str = Depends(current_user)):
-    return {"open_trades": list_trades(user, "open"), "trading_allowed": {"allowed": not KILL_SWITCH["active"], "daily_loss_pct": 0.0, "weekly_loss_pct": 0.0, "daily_limit": DAILY_LIMIT, "weekly_limit": WEEKLY_LIMIT}, "kill_switch": KILL_SWITCH["active"], "storage_mode": storage_mode()}
+    return {"open_trades": list_trades(user, "open"), "trading_allowed": trading_allowed(user), "kill_switch": KILL_SWITCH["active"], "storage_mode": storage_mode()}
 
 @app.get("/api/agent/trades")
 async def agent_all_trades(user: str = Depends(current_user)):
@@ -1495,4 +1578,4 @@ async def kill_switch_status():
 async def agent_status(user: str = Depends(current_user)):
     actions = manage_trades(user)
     open_trades = list_trades(user, "open")
-    return {"version": APP_VERSION, "user": user, "storage_mode": storage_mode(), "live_trading_enabled": False, "live_trading_locked": True, "paper_trading": True, "kill_switch_active": KILL_SWITCH["active"], "kill_switch_reason": KILL_SWITCH["reason"], "london_window_now": london_window(), "session": session_label(), "trading_allowed": {"allowed": not KILL_SWITCH["active"], "reason": KILL_SWITCH["reason"], "daily_loss_pct": 0.0, "weekly_loss_pct": 0.0, "daily_limit": DAILY_LIMIT, "weekly_limit": WEEKLY_LIMIT}, "open_trade_count": len(open_trades), "open_trades": open_trades, "management_actions": actions}
+    return {"version": APP_VERSION, "user": user, "storage_mode": storage_mode(), "live_trading_enabled": False, "live_trading_locked": True, "paper_trading": True, "kill_switch_active": KILL_SWITCH["active"], "kill_switch_reason": KILL_SWITCH["reason"], "london_window_now": london_window(), "session": session_label(), "trading_allowed": trading_allowed(user), "open_trade_count": len(open_trades), "open_trades": open_trades, "management_actions": actions}

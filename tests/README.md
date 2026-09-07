@@ -31,7 +31,7 @@ opens a real position.
 | `test_goldcap.py` | The gold risk cap, including that no other pair is affected. |
 | `test_endpoint.py` | The trade history repair: dry run doesn't mutate, apply is correct and idempotent, manual closes are left alone, and the wallet recomputes. |
 | `test_pricing.py` | That a trade is entered at a price it could actually have been filled at (ask for a buy, bid for a sell) without changing the stop distance or R:R, and that the backtest charges a spread so its results stay comparable to live. |
-| `test_integrity.py` | That no deployment can open a trade while its prices are invented, that the client cannot dictate a trade's entry/stop/target/risk, and that a trade's origin says who really placed it. |
+| `test_integrity.py` | That no deployment can open a trade while its prices are invented, that the client cannot dictate a trade's entry/stop/target/risk, that a trade's origin says who really placed it, and that the daily and weekly loss limits stop a person opening trades by hand, not just the agent. |
 | `test_execution.py` | The broker order path: the stop and target ride the actual fill rather than a pre-fill quote, so a slipped fill still risks exactly what the position was sized for. Also that live trading stays locked. |
 | `test_performance.py` | That the drawdown figure is computed rather than hardcoded to zero, and that the per-pair, per-setup and per-origin breakdowns actually split the trades — including the agent's results against your own. |
 | `test_notify.py` | Alerting: what is worth interrupting someone for and what stays quiet, plus that a dead webhook cannot stop the agent trading. |

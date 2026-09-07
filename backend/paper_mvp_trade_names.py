@@ -161,14 +161,7 @@ async def agent_status_named(user: str = Depends(base.current_user)):
         "session": base.session_label(),
         "open_trade_count": len(open_trades),
         "open_trades": open_trades,
-        "trading_allowed": {
-            "allowed": not base.KILL_SWITCH["active"],
-            "reason": base.KILL_SWITCH["reason"] if base.KILL_SWITCH["active"] else None,
-            "daily_loss_pct": 0.0,
-            "weekly_loss_pct": 0.0,
-            "daily_limit": base.DAILY_LIMIT,
-            "weekly_limit": base.WEEKLY_LIMIT,
-        },
+        "trading_allowed": base.trading_allowed(user),
     }
 
 
@@ -176,13 +169,7 @@ async def agent_status_named(user: str = Depends(base.current_user)):
 async def agent_open_trades_named(user: str = Depends(base.current_user)):
     return {
         "open_trades": name_trades(user, compat.compat_list_trades(user, "open")),
-        "trading_allowed": {
-            "allowed": not base.KILL_SWITCH["active"],
-            "daily_loss_pct": 0.0,
-            "weekly_loss_pct": 0.0,
-            "daily_limit": base.DAILY_LIMIT,
-            "weekly_limit": base.WEEKLY_LIMIT,
-        },
+        "trading_allowed": base.trading_allowed(user),
         "kill_switch": base.KILL_SWITCH["active"],
         "storage_mode": compat.compat_storage_mode(),
     }

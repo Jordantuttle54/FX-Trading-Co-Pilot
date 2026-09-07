@@ -212,30 +212,12 @@ def _closed_since(user: str, since: datetime) -> List[Dict[str, Any]]:
 def loss_limit_state(user: str, balance: float) -> Dict[str, Any]:
     """Realised loss today and this week, against the configured limits.
 
-    The status endpoint has always reported these as 0.0. That is harmless
-    while a human is deciding every trade and fatal once nothing is watching,
-    so the agent computes them for real before it opens anything.
+    Now a thin wrapper over the shared implementation in base, so the agent
+    and every status endpoint answer this question the same way. It used to
+    live only here, which is how the rest of the app ended up reporting a
+    hardcoded 0.0 and never enforcing the limits at all.
     """
-    now = datetime.now(timezone.utc)
-    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = day_start - timedelta(days=day_start.weekday())
-    balance = max(1.0, balance)
-
-    daily_pnl = round(sum(float(t.get("result_money") or 0) for t in _closed_since(user, day_start)), 2)
-    weekly_pnl = round(sum(float(t.get("result_money") or 0) for t in _closed_since(user, week_start)), 2)
-    daily_loss_pct = round(max(0.0, -daily_pnl) / balance * 100, 3)
-    weekly_loss_pct = round(max(0.0, -weekly_pnl) / balance * 100, 3)
-
-    return {
-        "daily_pnl": daily_pnl,
-        "weekly_pnl": weekly_pnl,
-        "daily_loss_pct": daily_loss_pct,
-        "weekly_loss_pct": weekly_loss_pct,
-        "daily_limit": base.DAILY_LIMIT,
-        "weekly_limit": base.WEEKLY_LIMIT,
-        "daily_breached": daily_loss_pct >= base.DAILY_LIMIT,
-        "weekly_breached": weekly_loss_pct >= base.WEEKLY_LIMIT,
-    }
+    return base.loss_limit_state(user, balance)
 
 
 # A quote this old means the market is shut, not that it stopped moving. Live
