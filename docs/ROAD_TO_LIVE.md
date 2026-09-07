@@ -176,7 +176,15 @@ None of it is optional, and none of it depends on the choice of broker.
    `backend/auth.py` locks out anyone who does not know `AUTH_PASSCODE`, so set and
    confirm that passcode first. A "keep me logged in" option belongs with this change,
    or the friction will tempt it back off.
-9. **Give previews their own database.** Preview deployments do not inherit
+9. **Build the news guard, or stop implying there is one.** `blocked_events` in
+   `score_candidate()` is a hardcoded empty list that nothing populates, and no calendar
+   provider is connected — the endpoint used to return two invented "placeholder" events
+   a day that read like real data. Both now say so plainly, but the underlying gap is
+   real: nothing stops the agent opening a position straight into NFP or a rate decision,
+   which is exactly where a stop gets gapped through and a 1R loss becomes a 5R one.
+   Needs a real calendar source, then a blackout window either side of high-impact
+   releases for the currencies in the pair.
+10. **Give previews their own database.** Preview deployments do not inherit
    Production-scoped environment variables, but they *do* share `DATABASE_URL` — so a
    build with no market-data credentials reads and writes the real wallet. Opening trades
    from such a deployment is now blocked (`market_data_is_live()`), but the cleaner fix is

@@ -1243,8 +1243,24 @@ async def market_candles(pair: str = "GBP/USD", interval: str = "1h", count: int
 
 @app.get("/api/calendar")
 async def calendar():
-    today = datetime.utcnow().date().isoformat()
-    return {"provider": "fallback", "generated_at": now(), "events": [{"date": today, "time": "09:30 London", "currency": "GBP", "event": "UK high-impact data placeholder", "impact": "High", "source": "fallback"}, {"date": today, "time": "13:30 London", "currency": "USD", "event": "US high-impact data placeholder", "impact": "High", "source": "fallback"}], "warnings": ["Fallback calendar only."]}
+    # This used to return two invented "placeholder" events every day, dated
+    # today and marked High impact, which read exactly like a real economic
+    # calendar. There is no calendar provider wired up, and no news blackout:
+    # blocked_events in score_candidate() is a hardcoded empty list that
+    # nothing populates. Returning nothing is the honest answer - the UI
+    # already has a message for it - because a fake calendar next to a claimed
+    # blackout invites trading straight through NFP believing you are covered.
+    return {
+        "provider": "none",
+        "generated_at": now(),
+        "events": [],
+        "news_guard_active": False,
+        "warnings": [
+            "No economic calendar provider is configured, so no events can be shown "
+            "and no news blackout is in force. Trades are NOT being checked against "
+            "high-impact releases."
+        ],
+    }
 
 @app.post("/api/scan")
 async def scan(req: ScanRequest, user: str = Depends(current_user)):
