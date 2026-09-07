@@ -139,6 +139,13 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
             take_profit = reference_price - target_distance
 
         precision = _price_precision(candidate["pair"])
+        # Attach the bracket as a DISTANCE from the fill, not an absolute price.
+        # The prices above are computed from a quote fetched moments earlier, so
+        # any slippage between that quote and the actual fill silently changes
+        # how far the stop really sits - and the position was sized on the
+        # intended distance. A trade meant to risk 1R would then risk more or
+        # less than 1R, with nothing in the record showing it. OANDA anchors a
+        # distance to the real fill price, so the risk is exactly what was sized.
         payload = {
             "order": {
                 "type": "MARKET",
@@ -146,8 +153,8 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
                 "units": str(int(units)),
                 "timeInForce": "FOK",
                 "positionFill": "DEFAULT",
-                "stopLossOnFill": {"price": f"{stop_loss:.{precision}f}"},
-                "takeProfitOnFill": {"price": f"{take_profit:.{precision}f}"},
+                "stopLossOnFill": {"distance": f"{stop_distance:.{precision}f}"},
+                "takeProfitOnFill": {"distance": f"{target_distance:.{precision}f}"},
             }
         }
 
@@ -173,13 +180,24 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
 
         now = datetime.now(timezone.utc).isoformat()
 
+        # Record the bracket relative to where it actually filled. Returning the
+        # pre-fill estimates would leave our own stop/target checks comparing
+        # against levels the broker is not holding.
+        filled_at_price = float(fill.get("price", candidate["entry"]))
+        if candidate["direction"] == "buy":
+            stop_loss = filled_at_price - stop_distance
+            take_profit = filled_at_price + target_distance
+        else:
+            stop_loss = filled_at_price + stop_distance
+            take_profit = filled_at_price - target_distance
+
         return {
             "mode": MODE_DEMO,
             "order_id": fill.get("id", "unknown"),
             "status": "filled",
             "pair": candidate["pair"],
             "direction": candidate["direction"],
-            "entry": float(fill.get("price", candidate["entry"])),
+            "entry": filled_at_price,
             "stop_loss": round(stop_loss, precision),
             "take_profit": round(take_profit, precision),
             "position_units": candidate["position_units"],
@@ -187,7 +205,7 @@ def _place_oanda_demo_trade(candidate: Dict[str, Any]) -> Dict[str, Any]:
             "risk_amount": candidate["risk_amount"],
             "filled_at": fill.get("time", now),
             "spread_cost": float(fill.get("halfSpreadCost", 0)) * 2,
-            "slippage": round(abs(float(fill.get("price", candidate["entry"])) - candidate["entry"]), 5),
+            "slippage": round(abs(filled_at_price - candidate["entry"]), 5),
             "broker_raw": json.dumps(data),
             "note": "OANDA practice demo trade.",
         }
