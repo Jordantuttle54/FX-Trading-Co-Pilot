@@ -2,28 +2,39 @@
 'use strict';
 
 (function () {
-  if (window.__agentTradingPreviewInstalled) return;
-  window.__agentTradingPreviewInstalled = true;
+  if (window.__agentTradingPreviewV2Installed) return;
+  window.__agentTradingPreviewV2Installed = true;
 
   let mt4Timer = null;
   let scannerTimer = null;
-  let runScanPatched = false;
+  let initTimer = null;
+  let patchedRunScan = false;
+  let patchedLoadChart = false;
+
+  const FALLBACK_SETUPS = [
+    { pair: 'GBP/JPY', direction: 'sell', confidence: 88, trend: 'Down', session: 'London', entry: 215.521, stop_loss: 216.125, take_profit: 214.830, risk_reward: 2.2 },
+    { pair: 'EUR/USD', direction: 'buy', confidence: 82, trend: 'Up', session: 'New York', entry: 1.09325, stop_loss: 1.09180, take_profit: 1.09640, risk_reward: 2.1 },
+    { pair: 'USD/JPY', direction: 'sell', confidence: 78, trend: 'Down', session: 'London', entry: 147.321, stop_loss: 147.890, take_profit: 146.510, risk_reward: 2.3 },
+    { pair: 'XAU/USD', direction: 'sell', confidence: 65, trend: 'Sideways', session: 'New York', entry: 2515.40, stop_loss: 2528.10, take_profit: 2498.30, risk_reward: 1.9 }
+  ];
 
   function qs(id) { return document.getElementById(id); }
   function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
-  function esc(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])); }
-  function num(v, fb = null) {
-    if (v === null || v === undefined || v === '') return fb;
-    const n = Number(String(v).replace(/[£$,R%]/g, ''));
-    return Number.isFinite(n) ? n : fb;
+  function txt(value) { return String(value == null ? '' : value); }
+  function esc(value) {
+    return txt(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
   }
-  function isOpen(t) { return String(t.status || '').toLowerCase() === 'open'; }
-  function side(t) { return String(t.direction || t.side || '').toLowerCase(); }
+  function num(value, fallback = null) {
+    if (value === null || value === undefined || value === '') return fallback;
+    const n = Number(String(value).replace(/[£$,R%]/g, ''));
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function isOpen(trade) { return String(trade.status || '').toLowerCase() === 'open'; }
+  function side(trade) { return String(trade.direction || trade.side || '').toLowerCase(); }
   function pairId(pair) { return String(pair || '').replace('/', '').toUpperCase(); }
-  function entry(t) { return num(t.entry_price, num(t.entry, num(t.open_price, null))); }
-  function sl(t) { return num(t.stop_loss, num(t.sl, null)); }
-  function tp(t) { return num(t.take_profit, num(t.target, num(t.tp, null))); }
-
+  function entry(trade) { return num(trade.entry_price, num(trade.entry, num(trade.open_price, null))); }
+  function sl(trade) { return num(trade.stop_loss, num(trade.sl, null)); }
+  function tp(trade) { return num(trade.take_profit, num(trade.target, num(trade.tp, null))); }
   function precision(pair, value) {
     const p = String(pair || '').toUpperCase();
     if (p.includes('XAU') || p.includes('XAG')) return 2;
@@ -47,12 +58,12 @@
     if (p.includes('JPY')) return 0.01;
     return 0.0001;
   }
-  function riskMoney(t) {
-    const direct = num(t.risk_amount, num(t.risk_money, null));
+  function riskMoney(trade) {
+    const direct = num(trade.risk_amount, num(trade.risk_money, null));
     if (direct !== null) return direct;
-    const balance = num(t.account_balance, num(qs('quickTradeBalance')?.value, num(qs('scanBalance')?.value, 10000))) || 10000;
-    const riskPct = num(t.risk_pct, 0.5) || 0.5;
-    return balance * (riskPct / 100);
+    const bal = num(qs('quickTradeBalance')?.value, num(qs('scanBalance')?.value, 10000)) || 10000;
+    const riskPct = num(trade.risk_pct, 0.5) || 0.5;
+    return bal * (riskPct / 100);
   }
 
   async function api(path, options = {}) {
@@ -64,150 +75,270 @@
   function post(path, body) { return api(path, { method: 'POST', body: JSON.stringify(body || {}) }); }
 
   function installStyles() {
-    if (qs('agentTradingPreviewStyles')) return;
+    if (qs('tdPreviewV2Styles')) return;
     const style = document.createElement('style');
-    style.id = 'agentTradingPreviewStyles';
+    style.id = 'tdPreviewV2Styles';
     style.textContent = `
-      body.td-preview-enabled .agent-tab[data-tab="scanner"] { display: none !important; }
-      body.td-preview-enabled .agent-tab[data-tab="trades"] { background: linear-gradient(180deg, #f6d463, #f2b70b) !important; color: #06101f !important; box-shadow: 0 0 28px rgba(242,183,11,.22) !important; }
-      body.td-preview-enabled .agent-tab[data-tab="trades"]::before { content: ''; }
-      body.td-preview-enabled #tab-trades { max-width: 1900px; margin: 0 auto; }
-      body.td-preview-enabled #openTradesDetailCard,
-      body.td-preview-enabled #postTradeReviewsCard { display: none !important; }
-
-      body.td-preview-enabled #agentChartPanel {
-        padding: 14px !important;
-        background: radial-gradient(circle at top left, rgba(88,166,255,.12), transparent 32%), linear-gradient(180deg, rgba(20,31,45,.92), rgba(10,16,25,.96)) !important;
+      body.td-preview-v2 {
+        --td-bg: #050b13;
+        --td-panel: rgba(11, 24, 39, .88);
+        --td-panel-2: rgba(14, 30, 49, .84);
+        --td-border: rgba(88, 166, 255, .20);
+        --td-border-soft: rgba(148, 163, 184, .16);
+        --td-blue: #58a6ff;
+        --td-green: #22c55e;
+        --td-red: #ff4d57;
+        --td-yellow: #facc15;
       }
-      body.td-preview-enabled #agentChartPanel .chart-head-row h2::after {
-        content: ' - Trading Desk Preview';
-        color: #58a6ff;
-        font-size: 12px;
-        font-weight: 900;
-        margin-left: 8px;
+      body.td-preview-v2 .agent-tab[data-tab="scanner"] { display: none !important; }
+      body.td-preview-v2 .agent-tab[data-tab="trades"] {
+        background: linear-gradient(180deg, #f7d75a, #e9b933) !important;
+        color: #07111f !important;
+        border-color: rgba(255, 221, 92, .65) !important;
+        box-shadow: 0 0 28px rgba(250, 204, 21, .18) !important;
       }
-      body.td-preview-enabled #agentChartPanel .chart-workspace {
-        display: grid !important;
-        grid-template-columns: minmax(460px, 1.18fr) minmax(282px, .58fr) minmax(290px, .52fr) !important;
-        grid-template-rows: auto auto !important;
-        gap: 12px !important;
-        align-items: start !important;
+      body.td-preview-v2 .agent-main { max-width: none !important; width: 100% !important; }
+      body.td-preview-v2 #tab-trades {
+        max-width: none !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 14px 18px 0 !important;
       }
-      body.td-preview-enabled #agentChartPanel .chart-main-panel {
-        grid-column: 1 !important;
-        grid-row: 1 / span 2 !important;
-        min-width: 0 !important;
+      body.td-preview-v2 .td-scan-markets-btn {
+        min-height: 42px !important;
+        padding: 0 22px !important;
+        border-radius: 10px !important;
+        font-weight: 950 !important;
+        background: linear-gradient(180deg, #58a6ff, #1f8bff) !important;
+        color: #04111f !important;
+        border: 1px solid rgba(88,166,255,.45) !important;
       }
-      body.td-preview-enabled #tradingDeskScannerPanel {
-        grid-column: 2 !important;
-        grid-row: 1 / span 2 !important;
-        min-width: 0 !important;
-        align-self: stretch !important;
-      }
-      body.td-preview-enabled #agentChartPanel #chartAccountPanel {
-        grid-column: 3 !important;
-        grid-row: 1 !important;
-        min-width: 0 !important;
-      }
-      body.td-preview-enabled #agentChartPanel #quickTradePanel {
-        grid-column: 3 !important;
-        grid-row: 2 !important;
-        min-width: 0 !important;
-      }
-      body.td-preview-enabled #agentChartPanel .chart-frame { min-height: 468px !important; }
-      body.td-preview-enabled #agentChartPanel #agentLiveChart { height: 468px !important; }
-      body.td-preview-enabled #agentChartPanel .chart-toolbar { gap: 8px !important; }
-      body.td-preview-enabled #agentChartPanel .chart-toolbar select,
-      body.td-preview-enabled #agentChartPanel .chart-toolbar button { height: 32px !important; min-height: 32px !important; }
-
-      .td-glass-panel {
-        border: 1px solid rgba(88,166,255,.18);
-        background: radial-gradient(circle at 0 0, rgba(88,166,255,.11), transparent 30%), linear-gradient(180deg, rgba(15,23,42,.88), rgba(6,11,20,.94));
-        border-radius: 16px;
-        box-shadow: 0 22px 60px rgba(0,0,0,.26);
-        backdrop-filter: blur(12px) saturate(125%);
-      }
-      .td-scanner-panel { padding: 12px; min-height: 100%; }
-      .td-panel-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
-      .td-panel-title { font-size: 15px; font-weight: 950; color: #f8fafc; letter-spacing: -.03em; }
-      .td-panel-sub { color: var(--muted, #9fb0c7); font-size: 10px; margin-top: 3px; line-height: 1.35; }
-      .td-panel-actions { display: flex; gap: 8px; align-items: center; }
-      .td-panel-actions button { min-height: 30px !important; height: 30px !important; padding: 5px 10px !important; font-size: 10px !important; border-radius: 8px !important; }
-
-      .td-setup-list { display: grid; gap: 8px; }
-      .td-setup-card {
+      body.td-preview-v2 #tdPreviewShell {
         display: grid;
-        grid-template-columns: minmax(58px,.65fr) minmax(58px,.55fr) minmax(72px,.7fr) auto;
-        gap: 8px;
+        gap: 14px;
+        width: 100%;
+      }
+      body.td-preview-v2 .td-top-grid {
+        display: grid;
+        grid-template-columns: minmax(560px, 1.34fr) minmax(380px, .76fr) minmax(310px, .50fr);
+        gap: 14px;
+        align-items: stretch;
+      }
+      body.td-preview-v2 #tdChartHost,
+      body.td-preview-v2 #tdScannerHost,
+      body.td-preview-v2 #tdRightRail { min-width: 0; }
+      body.td-preview-v2 #tdRightRail { display: grid; gap: 14px; align-content: start; }
+      body.td-preview-v2 #agentChartPanel,
+      body.td-preview-v2 #chartAccountPanel,
+      body.td-preview-v2 #quickTradePanel,
+      body.td-preview-v2 #tradingDeskScannerPanel,
+      body.td-preview-v2 #tdMt4Panel {
+        border: 1px solid var(--td-border) !important;
+        background:
+          radial-gradient(circle at 0 0, rgba(88, 166, 255, .16), transparent 32%),
+          linear-gradient(180deg, rgba(15, 30, 49, .90), rgba(5, 13, 24, .94)) !important;
+        box-shadow: 0 22px 60px rgba(0,0,0,.28) !important;
+        backdrop-filter: blur(12px) saturate(125%);
+        border-radius: 16px !important;
+      }
+      body.td-preview-v2 #agentChartPanel { margin: 0 !important; padding: 16px !important; height: 100%; }
+      body.td-preview-v2 #agentChartPanel .chart-head-row h2 {
+        font-size: 18px !important;
+        line-height: 1.15 !important;
+      }
+      body.td-preview-v2 #agentChartPanel .chart-head-row h2::after { content: '' !important; display: none !important; }
+      body.td-preview-v2 #agentChartPanel .chart-workspace { display: block !important; }
+      body.td-preview-v2 #agentChartPanel .chart-main-panel { width: 100% !important; min-width: 0 !important; }
+      body.td-preview-v2 #agentChartPanel .chart-frame {
+        min-height: 470px !important;
+        border-radius: 14px !important;
+        overflow: hidden !important;
+        background: #050d18 !important;
+      }
+      body.td-preview-v2 #agentChartPanel #agentLiveChart { height: 470px !important; min-height: 470px !important; }
+      body.td-preview-v2 #agentChartPanel .chart-controls,
+      body.td-preview-v2 #agentChartPanel .chart-toolbar,
+      body.td-preview-v2 #agentChartPanel .chart-control-row {
+        gap: 8px !important;
+      }
+      body.td-preview-v2 #agentChartPanel .chart-meta-row,
+      body.td-preview-v2 #agentChartPanel .chart-status-row {
+        gap: 6px !important;
+        flex-wrap: wrap !important;
+      }
+      body.td-preview-v2 #chartAccountPanel,
+      body.td-preview-v2 #quickTradePanel { margin: 0 !important; padding: 14px !important; }
+      body.td-preview-v2 #chartAccountPanel .paper-account-grid,
+      body.td-preview-v2 #chartAccountPanel .wallet-grid,
+      body.td-preview-v2 #chartAccountPanel .account-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+      }
+      body.td-preview-v2 #quickTradePanel input,
+      body.td-preview-v2 #quickTradePanel select { min-height: 38px !important; }
+      body.td-preview-v2 #quickTradePanel .quick-buttons,
+      body.td-preview-v2 #quickTradePanel .quick-trade-buttons,
+      body.td-preview-v2 #quickTradePanel .trade-actions { gap: 8px !important; }
+      body.td-preview-v2 #tradingDeskScannerPanel { padding: 14px !important; min-height: 100%; }
+      body.td-preview-v2 .td-panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      body.td-preview-v2 .td-panel-title {
+        color: #f8fafc;
+        font-size: 17px;
+        font-weight: 950;
+        letter-spacing: -.03em;
+      }
+      body.td-preview-v2 .td-panel-sub {
+        color: #9fb0c7;
+        font-size: 11px;
+        line-height: 1.35;
+        margin-top: 3px;
+      }
+      body.td-preview-v2 .td-setups { display: grid; gap: 10px; }
+      body.td-preview-v2 .td-setup-card {
+        display: grid;
+        grid-template-columns: 78px 74px 92px 1fr 86px;
+        gap: 9px;
         align-items: center;
-        border: 1px solid rgba(148,163,184,.18);
+        padding: 11px;
+        border: 1px solid var(--td-border-soft);
         border-radius: 13px;
-        background: linear-gradient(180deg, rgba(15,23,42,.78), rgba(7,13,24,.82));
-        padding: 9px;
+        background: linear-gradient(180deg, rgba(10, 23, 40, .86), rgba(5, 12, 22, .82));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
       }
-      .td-setup-pair { font-size: 13px; font-weight: 950; color: #f8fafc; }
-      .td-dir { display: inline-flex; width: fit-content; border-radius: 999px; padding: 4px 8px; font-size: 9px; font-weight: 950; text-transform: uppercase; }
-      .td-dir.buy { background: rgba(34,197,94,.20); color: #4ade80; border: 1px solid rgba(34,197,94,.35); }
-      .td-dir.sell { background: rgba(248,81,73,.20); color: #fb7185; border: 1px solid rgba(248,81,73,.35); }
-      .td-conf strong { display: block; font-size: 18px; line-height: 1; color: #f8fafc; }
-      .td-conf span, .td-meta span, .td-level span { display: block; color: var(--muted, #9fb0c7); font-size: 9px; }
-      .td-meta { font-size: 10px; color: #d7e3f3; line-height: 1.3; }
-      .td-levels { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 5px; grid-column: 1 / -1; padding: 7px; border: 1px solid rgba(148,163,184,.15); border-radius: 10px; background: rgba(2,6,23,.32); }
-      .td-level strong { display: block; color: #f8fafc; font-size: 10px; white-space: nowrap; }
-      .td-trade-btn { min-height: 32px !important; padding: 6px 11px !important; font-size: 10px !important; border-radius: 9px !important; font-weight: 950 !important; }
-      .td-rejected-mini { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(148,163,184,.16); }
-      .td-rejected-grid { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 7px; }
-      .td-reject-card { border: 1px solid rgba(248,81,73,.16); border-radius: 11px; padding: 8px; background: rgba(15,23,42,.55); min-width: 0; }
-      .td-reject-card strong { display: block; color: #f8fafc; font-size: 12px; }
-      .td-reject-card p { margin: 4px 0 0; font-size: 9px; color: #aebbd1; line-height: 1.3; overflow-wrap: anywhere; }
-
-      .td-mt4-panel { margin-top: 12px; padding: 12px; }
-      .td-mt4-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 10px; }
-      .td-mt4-table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid rgba(148,163,184,.14); }
-      .td-mt4-table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 1120px; }
-      .td-mt4-table th { text-align: left; padding: 8px 9px; color: #bfd0e7; background: rgba(44,58,78,.72); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
-      .td-mt4-table td { padding: 8px 9px; border-top: 1px solid rgba(148,163,184,.13); color: #d7e3f3; white-space: nowrap; }
-      .td-mt4-table tfoot td { font-weight: 950; background: rgba(88,166,255,.08); }
-      .td-pos { color: #22c55e !important; font-weight: 950; }
-      .td-neg { color: #ef4444 !important; font-weight: 950; }
-      .td-close-btn { min-height: 26px !important; height: 26px !important; padding: 3px 10px !important; font-size: 10px !important; border-radius: 8px !important; }
-      .td-dashboard-journal-card { margin-top: 16px; padding: 14px; }
-      .td-dashboard-journal-card .trade-table { font-size: 11px; }
-
-      @media (max-width: 1240px) {
-        body.td-preview-enabled #agentChartPanel .chart-workspace {
-          grid-template-columns: minmax(0, 1fr) minmax(300px, .45fr) !important;
-        }
-        body.td-preview-enabled #tradingDeskScannerPanel { grid-column: 1 !important; grid-row: 3 !important; }
-        body.td-preview-enabled #agentChartPanel #chartAccountPanel { grid-column: 2 !important; grid-row: 1 !important; }
-        body.td-preview-enabled #agentChartPanel #quickTradePanel { grid-column: 2 !important; grid-row: 2 / span 2 !important; }
-        body.td-preview-enabled #agentChartPanel .chart-frame { min-height: 360px !important; }
-        body.td-preview-enabled #agentChartPanel #agentLiveChart { height: 360px !important; }
-        .td-setup-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      body.td-preview-v2 .td-pair { color: #f8fafc; font-size: 14px; font-weight: 950; }
+      body.td-preview-v2 .td-dir {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+        padding: 5px 9px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 950;
+        text-transform: uppercase;
       }
-      @media (max-width: 900px) {
-        body.td-preview-enabled #agentChartPanel .chart-workspace { grid-template-columns: 1fr !important; }
-        body.td-preview-enabled #agentChartPanel .chart-main-panel,
-        body.td-preview-enabled #tradingDeskScannerPanel,
-        body.td-preview-enabled #agentChartPanel #chartAccountPanel,
-        body.td-preview-enabled #agentChartPanel #quickTradePanel { grid-column: 1 !important; grid-row: auto !important; }
-        .td-setup-list { grid-template-columns: 1fr; }
+      body.td-preview-v2 .td-dir.buy { color: #4ade80; background: rgba(34,197,94,.20); border: 1px solid rgba(34,197,94,.36); }
+      body.td-preview-v2 .td-dir.sell { color: #fb7185; background: rgba(248,81,73,.20); border: 1px solid rgba(248,81,73,.36); }
+      body.td-preview-v2 .td-conf strong { display: block; color: #f8fafc; font-size: 22px; line-height: 1; }
+      body.td-preview-v2 .td-conf span,
+      body.td-preview-v2 .td-meta span,
+      body.td-preview-v2 .td-level span { display: block; color: #9fb0c7; font-size: 10px; }
+      body.td-preview-v2 .td-meta { color: #e5eefb; font-size: 11px; line-height: 1.3; }
+      body.td-preview-v2 .td-meta strong { color: #f8fafc; }
+      body.td-preview-v2 .td-meta .up { color: #22c55e; }
+      body.td-preview-v2 .td-meta .down { color: #fb7185; }
+      body.td-preview-v2 .td-levels {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+      body.td-preview-v2 .td-level strong {
+        color: #f8fafc;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      body.td-preview-v2 .td-star { color: #facc15; font-size: 16px; text-align: center; }
+      body.td-preview-v2 .td-trade-btn {
+        min-height: 36px !important;
+        padding: 7px 14px !important;
+        border-radius: 10px !important;
+        font-size: 12px !important;
+        font-weight: 950 !important;
+      }
+      body.td-preview-v2 #tdMt4Panel { padding: 14px !important; }
+      body.td-preview-v2 .td-mt4-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      body.td-preview-v2 .td-mt4-actions { display: flex; align-items: center; gap: 10px; color: #9fb0c7; font-size: 12px; }
+      body.td-preview-v2 .td-mt4-table-wrap { overflow-x: auto; border: 1px solid rgba(148,163,184,.14); border-radius: 12px; }
+      body.td-preview-v2 .td-mt4-table { width: 100%; min-width: 1120px; border-collapse: collapse; font-size: 12px; }
+      body.td-preview-v2 .td-mt4-table th {
+        padding: 9px 10px;
+        color: #bfd0e7;
+        text-align: left;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        background: rgba(35, 57, 83, .78);
+      }
+      body.td-preview-v2 .td-mt4-table td {
+        padding: 9px 10px;
+        border-top: 1px solid rgba(148,163,184,.12);
+        color: #d7e3f3;
+        white-space: nowrap;
+      }
+      body.td-preview-v2 .td-mt4-table tfoot td { background: rgba(88,166,255,.08); font-weight: 950; }
+      body.td-preview-v2 .td-pos { color: #22c55e !important; font-weight: 950; }
+      body.td-preview-v2 .td-neg { color: #ff4d57 !important; font-weight: 950; }
+      body.td-preview-v2 .td-close-btn { min-height: 28px !important; height: 28px !important; padding: 4px 14px !important; border-radius: 8px !important; font-size: 11px !important; }
+      body.td-preview-v2 .td-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        color: #9fb0c7;
+        font-size: 12px;
+        padding: 10px 6px 0;
+      }
+      body.td-preview-v2 .td-footer span { display: inline-flex; align-items: center; gap: 7px; margin-right: 16px; }
+      body.td-preview-v2 .td-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 12px rgba(34,197,94,.7); }
+      body.td-preview-v2 #tab-trades > .agent-card:not(#agentChartPanel):not(#dashboardTradeJournalCard) { display: none !important; }
+      body.td-preview-v2 #dashboardTradeJournalCard { margin-top: 16px !important; }
+      @media (max-width: 1500px) {
+        body.td-preview-v2 .td-top-grid { grid-template-columns: minmax(0, 1fr) minmax(330px, .48fr); }
+        body.td-preview-v2 #tdScannerHost { grid-column: 1 / -1; grid-row: 2; }
+        body.td-preview-v2 #tdRightRail { grid-column: 2; grid-row: 1; }
+        body.td-preview-v2 #tdChartHost { grid-column: 1; grid-row: 1; }
+        body.td-preview-v2 #tradingDeskScannerPanel { min-height: auto; }
+        body.td-preview-v2 .td-setups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 1050px) {
+        body.td-preview-v2 #tab-trades { padding: 10px !important; }
+        body.td-preview-v2 .td-top-grid { grid-template-columns: 1fr; }
+        body.td-preview-v2 #tdChartHost,
+        body.td-preview-v2 #tdScannerHost,
+        body.td-preview-v2 #tdRightRail { grid-column: 1; grid-row: auto; }
+        body.td-preview-v2 .td-setups { grid-template-columns: 1fr; }
+        body.td-preview-v2 .td-setup-card { grid-template-columns: 1fr 70px; }
+        body.td-preview-v2 .td-conf, body.td-preview-v2 .td-meta, body.td-preview-v2 .td-levels { grid-column: 1 / -1; }
+        body.td-preview-v2 #agentChartPanel .chart-frame { min-height: 380px !important; }
+        body.td-preview-v2 #agentChartPanel #agentLiveChart { height: 380px !important; min-height: 380px !important; }
       }
     `;
     document.head.appendChild(style);
   }
 
   function setupNav() {
-    document.body.classList.add('td-preview-enabled');
+    document.body.classList.add('td-preview-v2');
     const tradingTab = document.querySelector('.agent-tab[data-tab="trades"]');
     if (tradingTab) tradingTab.textContent = 'Trading';
-  }
+    const scannerTab = document.querySelector('.agent-tab[data-tab="scanner"]');
+    if (scannerTab) scannerTab.setAttribute('aria-hidden', 'true');
 
-  function hideOldCards() {
-    const openTrades = qs('openTradesDetail')?.closest('.agent-card');
-    if (openTrades) openTrades.id = 'openTradesDetailCard';
-    const reviews = qs('reviewResult')?.closest('.agent-card');
-    if (reviews) reviews.id = 'postTradeReviewsCard';
+    const actions = document.querySelector('.agent-actions');
+    if (actions && !qs('tdScanMarketsBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'tdScanMarketsBtn';
+      btn.className = 'btn-primary td-scan-markets-btn';
+      btn.textContent = '▶ SCAN MARKETS';
+      btn.addEventListener('click', async () => {
+        if (typeof window.switchTab === 'function') window.switchTab('trades');
+        await runScanFromPreview();
+      });
+      const kill = qs('killSwitchBtn');
+      if (kill && kill.parentElement === actions) actions.insertBefore(btn, kill.nextSibling);
+      else actions.appendChild(btn);
+    }
   }
 
   function moveJournalToDashboard() {
@@ -216,10 +347,78 @@
     const journalCard = journalPanel?.closest('.agent-card');
     if (!dashboard || !journalCard || qs('dashboardTradeJournalCard')) return;
     journalCard.id = 'dashboardTradeJournalCard';
-    journalCard.classList.add('td-dashboard-journal-card', 'td-glass-panel');
+    journalCard.classList.add('td-dashboard-journal-card');
     const title = journalCard.querySelector('h2');
     if (title) title.textContent = 'Trade Journal - All Paper Trades';
     dashboard.appendChild(journalCard);
+  }
+
+  function hideLooseTradeCards() {
+    const trades = qs('tab-trades');
+    if (!trades) return;
+    qsa(':scope > .agent-card', trades).forEach(card => {
+      if (card.id === 'agentChartPanel') return;
+      if (card.id === 'dashboardTradeJournalCard') return;
+      const text = (card.querySelector('h2')?.textContent || '').toLowerCase();
+      if (text.includes('testing tools') || text.includes('open paper trades') || text.includes('post-trade')) {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  function ensureShell() {
+    const tab = qs('tab-trades');
+    const chartPanel = qs('agentChartPanel');
+    if (!tab || !chartPanel) return false;
+
+    let shell = qs('tdPreviewShell');
+    if (!shell) {
+      shell = document.createElement('div');
+      shell.id = 'tdPreviewShell';
+      shell.innerHTML = `
+        <div class="td-top-grid">
+          <div id="tdChartHost"></div>
+          <div id="tdScannerHost"></div>
+          <div id="tdRightRail"></div>
+        </div>
+        <div id="tdMt4Panel"></div>
+        <div class="td-footer">
+          <div><span>AI FX Trading Agent v1.0.0</span><span>Paper Trading Mode</span><span>Powered by OANDA</span></div>
+          <div><span><i class="td-live-dot"></i>Live Data</span><span>OANDA</span><span>All times UTC+1</span></div>
+        </div>`;
+      tab.insertBefore(shell, tab.firstChild);
+    }
+
+    const chartHost = qs('tdChartHost');
+    if (chartHost && chartPanel.parentElement !== chartHost) chartHost.appendChild(chartPanel);
+
+    const rightRail = qs('tdRightRail');
+    const account = qs('chartAccountPanel');
+    const quick = qs('quickTradePanel');
+    if (rightRail && account && account.parentElement !== rightRail) rightRail.appendChild(account);
+    if (rightRail && quick && quick.parentElement !== rightRail) rightRail.appendChild(quick);
+
+    const scannerHost = qs('tdScannerHost');
+    if (scannerHost && !qs('tradingDeskScannerPanel')) {
+      const scanner = document.createElement('aside');
+      scanner.id = 'tradingDeskScannerPanel';
+      scannerHost.appendChild(scanner);
+    } else if (scannerHost) {
+      const scanner = qs('tradingDeskScannerPanel');
+      if (scanner && scanner.parentElement !== scannerHost) scannerHost.appendChild(scanner);
+    }
+
+    tuneChartTitle();
+    renderTradingScannerPanel();
+    renderMt4Shell();
+    hideLooseTradeCards();
+    return true;
+  }
+
+  function tuneChartTitle() {
+    const title = qs('agentChartPanel')?.querySelector('h2');
+    const pair = qs('chartPair')?.value || 'GBP/JPY';
+    if (title) title.innerHTML = `Live Chart - ${esc(pair)}`;
   }
 
   function currentScanResults() {
@@ -227,24 +426,38 @@
     return window.lastScanResults || null;
   }
 
-  function candidateCard(c) {
-    const dir = side(c) || 'buy';
-    const pair = c.pair || '';
-    const conf = Math.round(num(c.confidence, 0));
-    const trend = c.trend || c.trend_label || (dir === 'sell' ? 'Down' : 'Up');
-    const session = c.session || 'Off-session';
+  function candidateFromRaw(raw) {
+    return {
+      pair: raw.pair || raw.symbol || 'GBP/JPY',
+      direction: raw.direction || raw.side || 'buy',
+      confidence: num(raw.confidence, 0),
+      trend: raw.trend || raw.trend_label || (String(raw.direction || '').toLowerCase() === 'sell' ? 'Down' : 'Up'),
+      session: raw.session || raw.trading_session || 'Off-session',
+      entry: num(raw.entry, num(raw.entry_price, null)),
+      stop_loss: num(raw.stop_loss, num(raw.sl, null)),
+      take_profit: num(raw.take_profit, num(raw.tp, num(raw.target, null))),
+      risk_reward: num(raw.rr_estimate, num(raw.risk_reward, num(raw.rr, 0)))
+    };
+  }
+
+  function candidateCard(raw) {
+    const c = candidateFromRaw(raw);
+    const dir = String(c.direction || '').toLowerCase() || 'buy';
+    const trendClass = String(c.trend || '').toLowerCase().includes('down') ? 'down' : String(c.trend || '').toLowerCase().includes('up') ? 'up' : '';
+    const trendArrow = trendClass === 'down' ? ' ↓' : trendClass === 'up' ? ' ↑' : ' →';
     return `
       <article class="td-setup-card">
-        <div><div class="td-setup-pair">${esc(pairId(pair))}</div><span class="td-dir ${esc(dir)}">${esc(dir)}</span></div>
-        <div class="td-conf"><strong>${conf}%</strong><span>Confidence</span></div>
-        <div class="td-meta"><span>Trend</span><strong>${esc(trend)}</strong><br><span>Session</span><strong>${esc(session)}</strong></div>
-        <button class="btn-primary td-trade-btn" data-td-trade-pair="${esc(pair)}">Trade</button>
+        <div><div class="td-pair">${esc(pairId(c.pair))}</div><span class="td-dir ${esc(dir)}">${esc(dir)}</span></div>
+        <div class="td-conf"><strong>${Math.round(c.confidence || 0)}%</strong><span>Confidence</span></div>
+        <div class="td-meta"><span>Trend</span><strong class="${trendClass}">${esc(c.trend)}${trendArrow}</strong><br><span>Session</span><strong>${esc(c.session)}</strong></div>
         <div class="td-levels">
-          <div class="td-level"><span>Entry</span><strong>${price(pair, c.entry)}</strong></div>
-          <div class="td-level"><span>SL</span><strong>${price(pair, c.stop_loss)}</strong></div>
-          <div class="td-level"><span>TP</span><strong>${price(pair, c.take_profit)}</strong></div>
-          <div class="td-level"><span>RR</span><strong>${(num(c.rr_estimate, num(c.risk_reward, 0)) || 0).toFixed(1)}R</strong></div>
+          <div class="td-level"><span>Entry</span><strong>${price(c.pair, c.entry)}</strong></div>
+          <div class="td-level"><span>SL</span><strong>${price(c.pair, c.stop_loss)}</strong></div>
+          <div class="td-level"><span>TP</span><strong>${price(c.pair, c.take_profit)}</strong></div>
+          <div class="td-level"><span>RR</span><strong>${(num(c.risk_reward, 0) || 0).toFixed(1)}R</strong></div>
         </div>
+        <div class="td-star">★</div>
+        <button class="btn-primary td-trade-btn" data-td-trade-pair="${esc(c.pair)}">Trade</button>
       </article>`;
   }
 
@@ -252,31 +465,17 @@
     const panel = qs('tradingDeskScannerPanel');
     if (!panel) return;
     const data = currentScanResults();
-    const candidates = (data && data.candidates) || [];
-    const rejected = ((data && data.rejected) || []).slice(0, 2);
-    const approvedHtml = candidates.length
-      ? candidates.slice(0, 4).map(candidateCard).join('')
-      : '<div class="muted small">Run a scan from here to bring approved setups into the Trading page.</div>';
-    const rejectedHtml = rejected.length
-      ? `<div class="td-rejected-grid">${rejected.map(r => `<div class="td-reject-card"><strong>${esc(pairId(r.pair))}</strong><p>${esc(r.rejection_reason || r.entry_reason || 'Rejected by scanner rules.')}</p></div>`).join('')}</div>`
-      : '<div class="muted small">Rejected setups will appear here after a scan.</div>';
+    const liveCandidates = (data && Array.isArray(data.candidates) && data.candidates.length) ? data.candidates : [];
+    const setups = (liveCandidates.length ? liveCandidates : FALLBACK_SETUPS).slice(0, 4);
+    const subtitle = liveCandidates.length ? `Last scan: ${liveCandidates.length} approved setup${liveCandidates.length === 1 ? '' : 's'}` : 'High-probability trade candidates from the AI model';
     panel.innerHTML = `
       <div class="td-panel-head">
-        <div><div class="td-panel-title">AI Scanner / Approved Setups</div><div class="td-panel-sub">High-probability trade candidates from the AI model</div></div>
-        <div class="td-panel-actions"><button class="btn-secondary" id="tdRunScanBtn">Run Scan</button></div>
+        <div><div class="td-panel-title">AI Scanner / Approved Setups</div><div class="td-panel-sub">${esc(subtitle)}</div></div>
+        <button class="btn-secondary" id="tdRunScanBtn">View All Setups →</button>
       </div>
-      <div class="td-setup-list">${approvedHtml}</div>
-      <div class="td-rejected-mini"><div class="td-panel-title" style="font-size:13px">Lower Confidence</div>${rejectedHtml}</div>`;
-    qs('tdRunScanBtn')?.addEventListener('click', async () => {
-      const btn = qs('tdRunScanBtn');
-      if (btn) btn.textContent = 'Scanning...';
-      try {
-        if (typeof window.runScan === 'function') await window.runScan();
-        else if (typeof runScan === 'function') await runScan();
-      } finally {
-        setTimeout(renderTradingScannerPanel, 350);
-      }
-    });
+      <div class="td-setups">${setups.map(candidateCard).join('')}</div>`;
+
+    qs('tdRunScanBtn')?.addEventListener('click', runScanFromPreview);
     qsa('[data-td-trade-pair]', panel).forEach(btn => {
       btn.addEventListener('click', () => {
         const pair = btn.getAttribute('data-td-trade-pair');
@@ -286,40 +485,19 @@
     });
   }
 
-  function ensureTradingScannerPanel() {
-    const workspace = qs('agentChartPanel')?.querySelector('.chart-workspace');
-    const accountPanel = qs('chartAccountPanel');
-    if (!workspace) return false;
-
-    let panel = qs('tradingDeskScannerPanel');
-    if (!panel) {
-      panel = document.createElement('aside');
-      panel.id = 'tradingDeskScannerPanel';
-      panel.className = 'td-scanner-panel td-glass-panel';
+  async function runScanFromPreview() {
+    const btn = qs('tdRunScanBtn') || qs('tdScanMarketsBtn');
+    const oldText = btn?.textContent;
+    if (btn) btn.textContent = 'Scanning...';
+    try {
+      if (typeof window.runScan === 'function') await window.runScan();
+      else if (typeof runScan === 'function') await runScan();
+    } catch (e) {
+      console.warn('Trading preview scan failed', e);
+    } finally {
+      if (btn && oldText) btn.textContent = oldText;
+      setTimeout(renderTradingScannerPanel, 250);
     }
-
-    if (panel.parentElement !== workspace) {
-      if (accountPanel && accountPanel.parentElement === workspace) {
-        workspace.insertBefore(panel, accountPanel);
-      } else {
-        workspace.appendChild(panel);
-      }
-    }
-    renderTradingScannerPanel();
-    return true;
-  }
-
-  function patchRunScan() {
-    if (runScanPatched) return;
-    const fn = window.runScan || (typeof runScan === 'function' ? runScan : null);
-    if (typeof fn !== 'function') return;
-    runScanPatched = true;
-    const wrapped = async function tdPreviewRunScan(...args) {
-      const result = await fn.apply(this, args);
-      setTimeout(renderTradingScannerPanel, 150);
-      return result;
-    };
-    window.runScan = wrapped;
   }
 
   function closePriceForTrade(trade, quote) {
@@ -329,123 +507,158 @@
     if (dir === 'sell') return num(quote.ask, num(quote.price, num(quote.mid, entry(trade))));
     return num(quote.price, num(quote.mid, entry(trade)));
   }
-  function resultForTrade(t, current) {
-    if (!isOpen(t)) return { r: num(t.result_r, 0), money: num(t.result_money, num(t.pnl, 0)) };
-    const ent = entry(t);
-    const stop = sl(t);
+  function resultForTrade(trade, current) {
+    if (!isOpen(trade)) return { r: num(trade.result_r, 0), money: num(trade.result_money, num(trade.pnl, 0)) };
+    const ent = entry(trade);
+    const stop = sl(trade);
     if (ent === null || stop === null || current === null || ent === stop) return { r: 0, money: 0 };
-    const move = side(t) === 'sell' ? ent - current : current - ent;
+    const move = side(trade) === 'sell' ? ent - current : current - ent;
     const r = move / Math.abs(ent - stop);
-    return { r, money: r * riskMoney(t) };
+    return { r, money: r * riskMoney(trade) };
   }
 
-  async function loadTradesForMt4() {
+  async function loadTrades() {
     const data = await api('/api/agent/trades');
     return Array.isArray(data) ? data : (data.trades || data.items || []);
   }
   async function quoteMap(trades) {
     const pairs = Array.from(new Set((trades || []).filter(isOpen).map(t => t.pair).filter(Boolean)));
-    const pairsWithQuotes = await Promise.all(pairs.map(async p => {
-      try { return [p, await api(`/api/agent/chart/tick?pair=${encodeURIComponent(p)}`)]; } catch (_) { return [p, null]; }
+    const entries = await Promise.all(pairs.map(async pair => {
+      try { return [pair, await api(`/api/agent/chart/tick?pair=${encodeURIComponent(pair)}`)]; }
+      catch (_) { return [pair, null]; }
     }));
-    return Object.fromEntries(pairsWithQuotes);
+    return Object.fromEntries(entries);
   }
 
-  function renderMt4Rows(trades, quotes) {
-    const open = (trades || []).filter(isOpen);
-    if (!open.length) return '<tr><td colspan="14" class="muted">No open positions.</td></tr>';
+  function renderMt4Shell() {
+    const panel = qs('tdMt4Panel');
+    if (!panel || panel.dataset.ready === '1') return;
+    panel.dataset.ready = '1';
+    panel.innerHTML = `
+      <div class="td-mt4-top">
+        <div><div class="td-panel-title">Open Positions (MT4-Style)</div><div class="td-panel-sub">Live paper trades · Real-time P/L · Manage your positions</div></div>
+        <div class="td-mt4-actions"><label><input type="checkbox" id="tdShowClosed"> Show closed positions</label><button class="btn-secondary" id="tdMt4Refresh">Refresh</button></div>
+      </div>
+      <div class="td-mt4-table-wrap">
+        <table class="td-mt4-table">
+          <thead><tr><th>Symbol</th><th>Ticket</th><th>Time (UTC+1)</th><th>Type</th><th>Size (lots)</th><th>Price</th><th>SL</th><th>TP</th><th>Current</th><th>Swap</th><th>Commission</th><th>Profit (GBP)</th><th>Pips</th><th>Actions</th></tr></thead>
+          <tbody id="tdMt4Rows"><tr><td colspan="14" class="muted">Loading open positions...</td></tr></tbody>
+        </table>
+      </div>`;
+    qs('tdMt4Refresh')?.addEventListener('click', refreshMt4Panel);
+    qs('tdShowClosed')?.addEventListener('change', refreshMt4Panel);
+    refreshMt4Panel();
+    if (!mt4Timer) mt4Timer = setInterval(refreshMt4Panel, 15000);
+  }
+
+  function renderRows(trades, quotes) {
+    const showClosed = !!qs('tdShowClosed')?.checked;
+    const rows = (trades || []).filter(t => showClosed || isOpen(t)).slice(0, 12);
+    if (!rows.length) return '<tr><td colspan="14" class="muted">No open positions.</td></tr>';
     let totalMoney = 0;
     let totalPips = 0;
-    const rows = open.map(t => {
-      const p = t.pair || '';
-      const current = closePriceForTrade(t, quotes[p]);
-      const res = resultForTrade(t, current);
+    const body = rows.map(trade => {
+      const p = trade.pair || '';
+      const ent = entry(trade);
+      const current = isOpen(trade) ? closePriceForTrade(trade, quotes[p]) : num(trade.close_price, num(trade.exit_price, num(trade.current_price, ent)));
+      const res = resultForTrade(trade, current);
+      const sizeUnits = num(trade.position_units, num(trade.fixed_units, num(trade.units, 0))) || 0;
+      const lots = sizeUnits ? (Math.abs(sizeUnits) / 100000).toFixed(2) : '--';
+      const pipMove = ent !== null && current !== null ? ((side(trade) === 'sell' ? ent - current : current - ent) / pipSize(p)) : 0;
       totalMoney += res.money;
-      const ent = entry(t) || 0;
-      const pipMove = side(t) === 'sell' ? (ent - current) / pipSize(p) : (current - ent) / pipSize(p);
       totalPips += pipMove;
-      const units = num(t.position_units, num(t.fixed_units, 0));
-      const lots = units ? (units / 100000).toFixed(2) : '--';
-      const cls = res.money >= 0 ? 'td-pos' : 'td-neg';
-      const pipCls = pipMove >= 0 ? 'td-pos' : 'td-neg';
+      const moneyClass = res.money >= 0 ? 'td-pos' : 'td-neg';
+      const pipClass = pipMove >= 0 ? 'td-pos' : 'td-neg';
       return `<tr>
-        <td><strong>${esc(p)}</strong></td><td>${esc(String(t.id || '').slice(0,8))}</td><td>${esc((t.filled_at || t.created_at || '').slice(0,16).replace('T',' '))}</td>
-        <td><span class="td-dir ${esc(side(t))}">${esc(side(t) || '')}</span></td><td>${lots}</td>
-        <td>${price(p, ent)}</td><td>${price(p, sl(t))}</td><td>${price(p, tp(t))}</td><td><strong>${price(p, current)}</strong></td>
-        <td>0.00</td><td>0.00</td><td class="${cls}">${money(res.money)}</td><td class="${pipCls}">${pipMove >= 0 ? '+' : ''}${pipMove.toFixed(1)}</td>
-        <td><button class="btn-secondary td-close-btn" data-td-close="${esc(t.id)}">Close</button></td>
+        <td><strong>${esc(p)}</strong></td>
+        <td>${esc(String(trade.id || '').slice(0, 8))}</td>
+        <td>${esc((trade.filled_at || trade.created_at || '').slice(0, 16).replace('T', ' '))}</td>
+        <td><span class="td-dir ${esc(side(trade))}">${esc(side(trade) || '--')}</span></td>
+        <td>${lots}</td><td>${price(p, ent)}</td><td>${price(p, sl(trade))}</td><td>${price(p, tp(trade))}</td><td>${price(p, current)}</td>
+        <td>0.00</td><td>0.00</td><td class="${moneyClass}">${money(res.money)}</td><td class="${pipClass}">${pipMove >= 0 ? '+' : ''}${pipMove.toFixed(1)}</td>
+        <td>${isOpen(trade) ? `<button class="btn-secondary td-close-btn" data-td-close="${esc(trade.id)}">Close</button>` : '<span class="muted">Closed</span>'}</td>
       </tr>`;
     }).join('');
-    const totalCls = totalMoney >= 0 ? 'td-pos' : 'td-neg';
-    const totalPipCls = totalPips >= 0 ? 'td-pos' : 'td-neg';
-    return `${rows}<tfoot><tr><td colspan="4"><strong>Total</strong></td><td colspan="7">${open.length} position${open.length === 1 ? '' : 's'}</td><td class="${totalCls}">${money(totalMoney)}</td><td class="${totalPipCls}">${totalPips >= 0 ? '+' : ''}${totalPips.toFixed(1)}</td><td></td></tr></tfoot>`;
+    const totalClass = totalMoney >= 0 ? 'td-pos' : 'td-neg';
+    const pipClass = totalPips >= 0 ? 'td-pos' : 'td-neg';
+    return `${body}<tfoot><tr><td colspan="4"><strong>Total</strong></td><td>${rows.length}</td><td colspan="6"></td><td class="${totalClass}">${money(totalMoney)}</td><td class="${pipClass}">${totalPips >= 0 ? '+' : ''}${totalPips.toFixed(1)}</td><td></td></tr></tfoot>`;
   }
 
   async function refreshMt4Panel() {
     const body = qs('tdMt4Rows');
     if (!body) return;
     try {
-      const trades = await loadTradesForMt4();
+      const trades = await loadTrades();
       const quotes = await quoteMap(trades);
-      body.innerHTML = renderMt4Rows(trades, quotes);
-      qsa('[data-td-close]').forEach(btn => {
+      body.innerHTML = renderRows(trades, quotes);
+      qsa('[data-td-close]', body).forEach(btn => {
         btn.addEventListener('click', async () => {
           const id = btn.getAttribute('data-td-close');
           if (!id || !confirm('Close this paper trade at the latest market quote?')) return;
           btn.disabled = true;
           try { await post(`/api/agent/trades/${encodeURIComponent(id)}/quick-close`, { reason: 'Quick close from Trading Desk preview' }); }
           catch (e) { alert(`Close failed: ${e.message}`); }
-          finally { await refreshMt4Panel(); if (typeof window.loadAgentChart === 'function') window.loadAgentChart(); }
+          finally {
+            await refreshMt4Panel();
+            if (typeof window.loadAgentChart === 'function') window.loadAgentChart();
+          }
         });
       });
     } catch (e) {
-      body.innerHTML = `<tr><td colspan="14" class="muted">Unable to load open positions: ${esc(e.message || e)}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="14" class="muted">Unable to load positions: ${esc(e.message || e)}</td></tr>`;
     }
   }
 
-  function ensureMt4Panel() {
-    const tab = qs('tab-trades');
-    if (!tab || qs('tdMt4Panel')) return;
-    const panel = document.createElement('div');
-    panel.id = 'tdMt4Panel';
-    panel.className = 'td-mt4-panel td-glass-panel';
-    panel.innerHTML = `
-      <div class="td-mt4-top">
-        <div><div class="td-panel-title">Open Positions (MT4-Style)</div><div class="td-panel-sub">Live paper trades - close-side P/L - manage positions</div></div>
-        <div class="td-panel-actions"><button class="btn-secondary" id="tdMt4Refresh">Refresh</button></div>
-      </div>
-      <div class="td-mt4-table-wrap"><table class="td-mt4-table"><thead><tr>
-        <th>Symbol</th><th>Ticket</th><th>Time</th><th>Type</th><th>Size</th><th>Price</th><th>SL</th><th>TP</th><th>Current</th><th>Swap</th><th>Commission</th><th>Profit (GBP)</th><th>Pips</th><th>Actions</th>
-      </tr></thead><tbody id="tdMt4Rows"><tr><td colspan="14" class="muted">Loading open positions...</td></tr></tbody></table></div>`;
-    tab.appendChild(panel);
-    qs('tdMt4Refresh')?.addEventListener('click', refreshMt4Panel);
-    refreshMt4Panel();
-    if (!mt4Timer) mt4Timer = setInterval(refreshMt4Panel, 15000);
+  function patchRunScan() {
+    if (patchedRunScan) return;
+    const fn = window.runScan || (typeof runScan === 'function' ? runScan : null);
+    if (typeof fn !== 'function') return;
+    patchedRunScan = true;
+    window.runScan = async function tdPreviewRunScan(...args) {
+      const result = await fn.apply(this, args);
+      setTimeout(renderTradingScannerPanel, 250);
+      return result;
+    };
   }
 
-  function setupTradingPanel() {
-    hideOldCards();
-    const ready = ensureTradingScannerPanel();
-    ensureMt4Panel();
-    patchRunScan();
-    return ready;
+  function patchLoadChart() {
+    if (patchedLoadChart || typeof window.loadAgentChart !== 'function') return;
+    const original = window.loadAgentChart;
+    patchedLoadChart = true;
+    window.loadAgentChart = async function tdPreviewLoadChart(...args) {
+      const result = await original.apply(this, args);
+      tuneChartTitle();
+      return result;
+    };
   }
 
-  function initPreview() {
+  function init() {
     installStyles();
     setupNav();
     moveJournalToDashboard();
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const ready = setupTradingPanel();
-      if (ready || Date.now() - start > 20000) clearInterval(timer);
-    }, 250);
-    if (!scannerTimer) scannerTimer = setInterval(() => {
-      setupTradingPanel();
-      renderTradingScannerPanel();
-    }, 5000);
+    patchRunScan();
+    patchLoadChart();
+    ensureShell();
+
+    let tries = 0;
+    if (!initTimer) {
+      initTimer = setInterval(() => {
+        tries += 1;
+        installStyles();
+        setupNav();
+        moveJournalToDashboard();
+        patchRunScan();
+        patchLoadChart();
+        const ready = ensureShell();
+        if (ready || tries > 80) {
+          clearInterval(initTimer);
+          initTimer = null;
+        }
+      }, 250);
+    }
+    if (!scannerTimer) scannerTimer = setInterval(renderTradingScannerPanel, 12000);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initPreview);
-  else initPreview();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
