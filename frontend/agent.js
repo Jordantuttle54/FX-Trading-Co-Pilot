@@ -464,6 +464,24 @@ async function loadCalendar() {
           const data = await api('/api/calendar');
           const events = data.events || [];
 
+      // Say what the guard is actually doing. This card claimed a 30-minute
+      // blackout for a long time while nothing consulted the calendar, so it
+      // now reports the live state rather than a fixed sentence.
+      const gs = document.getElementById('newsGuardState');
+      if (gs) {
+        if (data.news_guard_active) {
+          gs.className = 'card-sub result-win';
+          gs.innerHTML = `&#10003; News blackout active &mdash; no new trade opens within
+            <strong>${data.blackout_minutes}</strong> minutes of a
+            ${(data.blocked_impacts || ['high']).join('/')}-impact release for either
+            currency in the pair. Source: <strong>${data.provider}</strong>.`;
+        } else {
+          gs.className = 'card-sub result-loss';
+          gs.innerHTML = '&#9888; No news blackout is active. No calendar provider is connected, ' +
+            'so trades are not checked against high-impact releases.';
+        }
+      }
+
       if (!events.length) {
               el.innerHTML = '<div class="muted small">No calendar events available. Check your calendar provider configuration.</div>';
               return;

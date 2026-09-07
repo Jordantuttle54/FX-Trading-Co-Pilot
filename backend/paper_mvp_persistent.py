@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import execution
+from . import news_guard
 
 from .auth import current_user, make_session
 
@@ -1191,6 +1192,12 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     # Setup-specific reasons come from the strategy itself; the gates below
     # are account-level and apply whichever strategy found the setup.
     rejects = list(setup["rejects"])
+    # A stop is no protection through a high-impact release: price gaps past
+    # the level and fills well beyond it, so a 1R trade loses several.
+    news = news_guard.check(pair)
+    blocked_events = news.get("events") or []
+    if news.get("blocked"):
+        rejects.append(news["reason"])
     if ENFORCE_WINDOW and not london_window():
         rejects.append("Outside the configured London paper-trading window.")
     if direction != "none" and conf < MIN_CONF:
@@ -1198,7 +1205,7 @@ def score_candidate(pair: str, account_balance: float = START_BALANCE, fixed_uni
     if KILL_SWITCH["active"]:
         rejects.append(KILL_SWITCH["reason"] or "Kill switch active.")
     status = "trade_candidate" if not rejects else ("no_setup" if direction == "none" else "rejected")
-    return {"pair": pair, "direction": direction, "strategy": setup["strategy"], "setup_type": setup["setup_type"], "setup_label": setup["setup_label"], "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} {setup['entry_reason']}." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "entry_basis": entry_basis, "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "risk_cap": gold_cap, "analysis": a, "blocked_events": [], "source": a.get("data_source") or ("oanda" if oanda_configured() else "synthetic-fallback"), "strategy_config": strat}
+    return {"pair": pair, "direction": direction, "strategy": setup["strategy"], "setup_type": setup["setup_type"], "setup_label": setup["setup_label"], "confidence": conf, "confidence_notes": confidence_notes, "rr_estimate": rr, "session": session_label(), "in_window": london_window(), "scanned_at": now(), "status": status, "rejection_reason": " | ".join(rejects) if rejects else None, "entry_reason": f"{pair} {direction} {setup['entry_reason']}." if direction != "none" else "No clear setup detected.", "entry": rprice(pair, entry), "entry_price": rprice(pair, entry), "stop_loss": rprice(pair, sl), "take_profit": rprice(pair, tp), "target": rprice(pair, tp), "stop_pips": stop_pips, "stop_basis": "atr" if atr_pips else "fixed_fallback", "entry_basis": entry_basis, "risk_amount": risk_amount, "position_units": position_units, "risk_pct": MAX_RISK, "account_balance": account_balance, "fixed_units": bool(fixed_units and fixed_units > 0), "risk_cap": gold_cap, "analysis": a, "blocked_events": blocked_events, "news_guard": news, "source": a.get("data_source") or ("oanda" if oanda_configured() else "synthetic-fallback"), "strategy_config": strat}
 
 
 def score_candidates(pair: str, account_balance: float = START_BALANCE, fixed_units: Optional[float] = None, candles: Optional[List[Dict[str, Any]]] = None, strategy_overrides: Optional[Dict[str, Any]] = None, quote: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -1368,24 +1375,34 @@ async def market_candles(pair: str = "GBP/USD", interval: str = "1h", count: int
 
 @app.get("/api/calendar")
 async def calendar():
-    # This used to return two invented "placeholder" events every day, dated
-    # today and marked High impact, which read exactly like a real economic
-    # calendar. There is no calendar provider wired up, and no news blackout:
-    # blocked_events in score_candidate() is a hardcoded empty list that
-    # nothing populates. Returning nothing is the honest answer - the UI
-    # already has a message for it - because a fake calendar next to a claimed
-    # blackout invites trading straight through NFP believing you are covered.
+    # Previously returned two invented "placeholder" events every day, dated
+    # today and marked High impact, which read exactly like a real calendar
+    # while nothing consulted it. Now it reports whatever the configured
+    # provider actually says - and says plainly when there is no provider.
+    state = news_guard.status()
+    warnings = []
+    if not state["configured"]:
+        warnings.append(
+            "No economic calendar provider is configured, so no events can be shown and no "
+            "news blackout is in force. Trades are NOT being checked against high-impact releases."
+        )
+    if state["error"]:
+        warnings.append(
+            f"Could not reach the calendar provider: {state['error']}. "
+            + ("Trades are being allowed through anyway (NEWS_GUARD_FAIL_OPEN)."
+               if state["fail_open"] else "New trades are blocked until it recovers.")
+        )
     return {
-        "provider": "none",
+        "provider": state["provider"],
         "generated_at": now(),
-        "events": [],
-        "news_guard_active": False,
-        "warnings": [
-            "No economic calendar provider is configured, so no events can be shown "
-            "and no news blackout is in force. Trades are NOT being checked against "
-            "high-impact releases."
-        ],
+        "events": state["events"],
+        "news_guard_active": state["active"],
+        "blackout_minutes": state["blackout_minutes"],
+        "blocked_impacts": state["impacts"],
+        "fetched_at": state["fetched_at"],
+        "warnings": warnings,
     }
+
 
 @app.post("/api/scan")
 async def scan(req: ScanRequest, user: str = Depends(current_user)):
