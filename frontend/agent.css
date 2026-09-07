@@ -137,9 +137,15 @@ main.agent-main, .agent-main {
 }
 #tab-scanner > .agent-card:first-child { grid-area: controls; margin: 0; }
 #tab-scanner > .agent-card:last-child { grid-area: history; margin: 0; }
-#candidatesSection { grid-area: candidates; min-width: 0; width: 100%; margin: 0; }
-#rejectedSection { grid-area: rejected; min-width: 0; width: 100%; margin: 0; }
-#noSetupSection { grid-area: nosetup; min-width: 0; width: 100%; margin: 0; }
+/* These carry grid-area names belonging to the #tab-scanner template above.
+   Written unscoped, they applied wherever the sections happened to live - so
+   after the scanner moved onto the Trade tab, all three claimed named areas
+   that its grid does not define, landed in the same implicit cell and drew on
+   top of one another. Scoped to the template that positions them. */
+#tab-scanner #candidatesSection { grid-area: candidates; }
+#tab-scanner #rejectedSection { grid-area: rejected; }
+#tab-scanner #noSetupSection { grid-area: nosetup; }
+#candidatesSection, #rejectedSection, #noSetupSection { min-width: 0; width: 100%; margin: 0; }
 .candidates-grid { display: grid !important; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap: 20px; width: 100%; }
 .candidate-card { background: var(--panel-2); border: 1px solid rgba(63,185,80,.55); border-radius: 16px; padding: 20px; min-width: 0; overflow: hidden; }
 .candidate-pair { font-size: 24px; font-weight: 950; letter-spacing: -.04em; }
