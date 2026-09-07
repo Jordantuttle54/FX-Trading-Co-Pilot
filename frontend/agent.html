@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/agent_compact.css"/>
   <link rel="stylesheet" href="/static/agent_dashboard.css"/>
   <link rel="stylesheet" href="/static/agent_control.css"/>
+<link rel="stylesheet" href="/static/trading_desk.css"/>
 </head>
 <body>
 
@@ -49,8 +50,7 @@
 
 <nav class="agent-nav">
   <button class="agent-tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Agent Dashboard</button>
-  <button class="agent-tab" data-tab="scanner" onclick="switchTab('scanner')">Scanner</button>
-  <button class="agent-tab" data-tab="trades" onclick="switchTab('trades')">Trades &amp; Journal</button>
+  <button class="agent-tab" data-tab="trades" onclick="switchTab('trades')">Trade</button>
   <button class="agent-tab" data-tab="calendar" onclick="switchTab('calendar')">Calendar &amp; News</button>
   <button class="agent-tab" data-tab="performance" onclick="switchTab('performance')">Performance</button>
   <button class="agent-tab" data-tab="settings" onclick="switchTab('settings')">Settings</button>
@@ -115,54 +115,6 @@
         <div id="upcomingNewsPanel">Loading...</div>
       </div>
     </div>
-  </section>
-
-  <section id="tab-scanner" class="agent-section">
-    <div class="agent-card">
-      <h2>Autonomous Market Scanner</h2>
-      <p class="card-sub">Scans approved pairs using the OANDA practice feed where configured. Any trade opened from this screen is a paper trade only.</p>
-      <div class="scanner-controls">
-        <label>Paper Account Balance ($)
-          <input type="number" id="scanBalance" value="10000" min="1000" step="500"/>
-        </label>
-        <label>Trade Size (units)
-          <input type="number" id="fixedTradeUnits" value="1000" min="1" step="1000"/>
-        </label>
-        <button class="btn-primary" onclick="runScan()">&#9654; Run Full Scan</button>
-      </div>
-      <p class="card-sub" style="margin-top:8px">Every trade opened from the scanner, quick-open, or AI quick-open uses this fixed unit size, not a % of balance - so exposure stays the same and predictable no matter what the AI is trading.</p>
-      <div id="scannerStatus" class="scan-status"></div>
-    </div>
-
-    <div id="candidatesSection" style="display:none">
-      <h3 class="section-heading">&#9650; Trade Candidates</h3>
-      <div id="candidatesList" class="candidates-grid"></div>
-    </div>
-
-    <div id="rejectedSection" style="display:none">
-      <h3 class="section-heading muted">&#9660; Rejected Setups</h3>
-      <div id="rejectedList" class="rejected-list"></div>
-    </div>
-
-    <div id="noSetupSection" style="display:none">
-      <h3 class="section-heading muted">&#8212; No Setup Found</h3>
-      <div id="noSetupList" class="no-setup-list"></div>
-    </div>
-
-    <div class="agent-card" style="margin-top:24px">
-      <h2>Recent Scan History</h2>
-      <div id="scanHistoryPanel">
-        <button class="btn-secondary" onclick="loadScanHistory()">Load Scan History</button>
-      </div>
-    </div>
-  </section>
-
-  <section id="tab-trades" class="agent-section">
-    <div class="agent-card">
-      <h2>Open Paper Trades</h2>
-      <div id="openTradesDetail">Loading...</div>
-    </div>
-
     <div class="agent-card">
       <h2>Trade Journal - All Paper Trades</h2>
       <div class="journal-filters">
@@ -175,12 +127,60 @@
       </div>
       <div id="tradeJournalPanel" class="trade-journal">Loading...</div>
     </div>
+  </section>
 
-    <div class="agent-card">
-      <h2>Post-Trade Reviews</h2>
-      <p class="card-sub">Reviews are generated automatically when a paper trade closes. Click to trigger manual review of any pending trades.</p>
-      <button class="btn-secondary" onclick="reviewPending()">Review All Pending Trades</button>
-      <div id="reviewResult" style="margin-top:12px"></div>
+  <!-- Trade: chart, ticket, scanner and open positions on one screen. The
+       chart and ticket panels are injected here by agent_chart.js and
+       agent_quick_trade.js; the host below gives them a fixed home so the
+       layout does not depend on injection order. -->
+  <section id="tab-trades" class="agent-section">
+    <div id="tradeDesk">
+      <div id="tradeDeskChartHost"></div>
+
+      <!-- The scanner keeps its own grid; wrapping it means that grid lays
+           out the scanner and not the whole desk. -->
+      <div id="deskScanner">
+      <div class="agent-card">
+        <h2>Autonomous Market Scanner</h2>
+        <p class="card-sub">Scans approved pairs using the OANDA practice feed where configured. Any trade opened from this screen is a paper trade only.</p>
+        <div class="scanner-controls">
+          <label>Paper Account Balance ($)
+            <input type="number" id="scanBalance" value="10000" min="1000" step="500"/>
+          </label>
+          <label>Trade Size (units)
+            <input type="number" id="fixedTradeUnits" value="1000" min="1" step="1000"/>
+          </label>
+          <button class="btn-primary" onclick="runScan()">&#9654; Run Full Scan</button>
+        </div>
+        <p class="card-sub" style="margin-top:8px">Every trade opened from the scanner, quick-open, or AI quick-open uses this fixed unit size, not a % of balance - so exposure stays the same and predictable no matter what the AI is trading.</p>
+        <div id="scannerStatus" class="scan-status"></div>
+      </div>
+
+      <div id="candidatesSection" style="display:none">
+        <h3 class="section-heading">&#9650; Trade Candidates</h3>
+        <div id="candidatesList" class="candidates-grid"></div>
+      </div>
+
+      <div id="rejectedSection" style="display:none">
+        <h3 class="section-heading muted">&#9660; Rejected Setups</h3>
+        <div id="rejectedList" class="rejected-list"></div>
+      </div>
+
+      <div id="noSetupSection" style="display:none">
+        <h3 class="section-heading muted">&#8212; No Setup Found</h3>
+        <div id="noSetupList" class="no-setup-list"></div>
+      </div>
+      </div>
+
+      <div class="agent-card" id="openPositionsCard">
+        <div class="desk-card-head">
+          <h2>Open Positions</h2>
+          <button class="btn-secondary" onclick="if(window.refreshDeskPositions)window.refreshDeskPositions(true)">Refresh</button>
+        </div>
+        <div id="deskPositionsPanel" class="desk-positions">Loading open positions&hellip;</div>
+      </div>
+
+
     </div>
   </section>
 
@@ -290,6 +290,19 @@
       <button class="btn-secondary" onclick="loadVersions()">Load Version History</button>
       <div id="versionsPanel" style="margin-top:12px"></div>
     </div>
+    <div class="agent-card" style="margin-top:24px">
+      <h2>Recent Scan History</h2>
+      <div id="scanHistoryPanel">
+        <button class="btn-secondary" onclick="loadScanHistory()">Load Scan History</button>
+      </div>
+    </div>
+
+    <div class="agent-card">
+      <h2>Post-Trade Reviews</h2>
+      <p class="card-sub">Reviews are generated automatically when a paper trade closes. Click to trigger manual review of any pending trades.</p>
+      <button class="btn-secondary" onclick="reviewPending()">Review All Pending Trades</button>
+      <div id="reviewResult" style="margin-top:12px"></div>
+    </div>
   </section>
 
   <section id="tab-settings" class="agent-section">
@@ -392,5 +405,6 @@
 <script src="/static/agent_trade_repair.js"></script>
 <script src="/static/agent_control.js"></script>
 <script src="/static/data_source_banner.js"></script>
+<script src="/static/trading_desk.js"></script>
 </body>
 </html>

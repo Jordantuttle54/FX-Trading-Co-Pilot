@@ -343,7 +343,10 @@ async function loadOpenTradesDetail() {
           renderOpenTrades(data.open_trades || [], 'openTradesDetail');
           populatePriceForms(data.open_trades || []);
     } catch (e) {
-          document.getElementById('openTradesDetail').innerHTML = `<span class="muted small">Error: ${e.message}</span>`;
+          // The Trade tab now renders positions itself, so this panel may not
+          // be on the page at all.
+          const el = document.getElementById('openTradesDetail');
+          if (el) el.innerHTML = `<span class="muted small">Error: ${e.message}</span>`;
     }
 }
 

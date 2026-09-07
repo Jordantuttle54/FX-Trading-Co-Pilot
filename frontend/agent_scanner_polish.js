@@ -1,4 +1,13 @@
-/* agent_scanner_polish.js - scanner-only visual layout and card renderer */
+/* agent_scanner_polish.js - scanner card renderer.
+ *
+ * Its stylesheet is deliberately scoped to #tab-scanner-retired, a container
+ * that no longer exists, so none of it applies. The scanner now lives on the
+ * Trade tab and is styled from trading_desk.css without !important - three
+ * attempts at re-pointing this sheet each produced a different broken layout,
+ * because it was written to lay out a whole tab rather than a panel.
+ *
+ * What is still live here is renderCandidates(), which builds the card markup.
+ */
 'use strict';
 
 (function () {
@@ -89,7 +98,7 @@
     const style = document.createElement('style');
     style.id = 'agentScannerPolishStyles';
     style.textContent = `
-      #tab-scanner.active {
+      #tab-scanner-retired {
         display: grid !important;
         grid-template-columns: minmax(310px, 410px) minmax(0, 1fr);
         grid-template-areas:
@@ -101,7 +110,7 @@
         align-items: start !important;
       }
 
-      #tab-scanner > .agent-card:first-child {
+      #tab-scanner-retired > .agent-card:first-child {
         grid-area: scan !important;
         margin: 0 !important;
         padding: 18px 20px !important;
@@ -115,7 +124,7 @@
         backdrop-filter: blur(14px) saturate(125%);
       }
 
-      #tab-scanner > .agent-card:last-child {
+      #tab-scanner-retired > .agent-card:last-child {
         grid-area: history !important;
         margin: 0 !important;
         padding: 16px 18px !important;
@@ -126,15 +135,15 @@
         backdrop-filter: blur(12px) saturate(120%);
       }
 
-      #tab-scanner #candidatesSection,
-      #tab-scanner #rejectedSection,
-      #tab-scanner #noSetupSection {
+      #tab-scanner-retired #candidatesSection,
+      #tab-scanner-retired #rejectedSection,
+      #tab-scanner-retired #noSetupSection {
         min-width: 0 !important;
         width: 100% !important;
         margin: 0 !important;
       }
 
-      #tab-scanner #candidatesSection {
+      #tab-scanner-retired #candidatesSection {
         grid-area: approved !important;
         padding: 16px 18px !important;
         border: 1px solid rgba(88,166,255,.18);
@@ -142,18 +151,18 @@
         background: linear-gradient(180deg, rgba(88,166,255,.035), rgba(2,6,23,.10));
       }
 
-      #tab-scanner #rejectedSection,
-      #tab-scanner #noSetupSection {
+      #tab-scanner-retired #rejectedSection,
+      #tab-scanner-retired #noSetupSection {
         padding: 14px 16px !important;
         border: 1px solid rgba(148,163,184,.18);
         border-radius: 18px;
         background: linear-gradient(180deg, rgba(15,23,42,.72), rgba(2,6,23,.18));
       }
 
-      #tab-scanner #rejectedSection { grid-area: rejected !important; }
-      #tab-scanner #noSetupSection { grid-area: nosetup !important; }
+      #tab-scanner-retired #rejectedSection { grid-area: rejected !important; }
+      #tab-scanner-retired #noSetupSection { grid-area: nosetup !important; }
 
-      #tab-scanner .scanner-section-head {
+      #tab-scanner-retired .scanner-section-head {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
@@ -161,7 +170,7 @@
         margin: 0 0 14px;
       }
 
-      #tab-scanner .scanner-section-title {
+      #tab-scanner-retired .scanner-section-title {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -171,13 +180,13 @@
         letter-spacing: -.02em;
       }
 
-      #tab-scanner .scanner-section-sub {
+      #tab-scanner-retired .scanner-section-sub {
         margin: 4px 0 0;
         color: var(--muted);
         font-size: 12px;
       }
 
-      #tab-scanner .scanner-section-icon {
+      #tab-scanner-retired .scanner-section-icon {
         width: 20px;
         height: 20px;
         display: inline-grid;
@@ -188,10 +197,10 @@
         line-height: 1;
       }
 
-      #tab-scanner .scanner-icon-approved { color: var(--accent, #58a6ff); }
-      #tab-scanner .scanner-icon-rejected { color: var(--red, #f85149); }
+      #tab-scanner-retired .scanner-icon-approved { color: var(--accent, #58a6ff); }
+      #tab-scanner-retired .scanner-icon-rejected { color: var(--red, #f85149); }
 
-      #tab-scanner .scanner-view-btn {
+      #tab-scanner-retired .scanner-view-btn {
         appearance: none;
         border: 1px solid rgba(148,163,184,.28);
         background: rgba(15,23,42,.76);
@@ -203,12 +212,12 @@
         white-space: nowrap;
       }
 
-      #tab-scanner .scanner-controls { gap: 12px !important; }
-      #tab-scanner .scanner-controls input { min-height: 38px !important; }
-      #tab-scanner .scanner-controls .btn-primary,
-      #tab-scanner .scanner-controls button { width: 100%; min-height: 42px; font-weight: 950; }
+      #tab-scanner-retired .scanner-controls { gap: 12px !important; }
+      #tab-scanner-retired .scanner-controls input { min-height: 38px !important; }
+      #tab-scanner-retired .scanner-controls .btn-primary,
+      #tab-scanner-retired .scanner-controls button { width: 100%; min-height: 42px; font-weight: 950; }
 
-      #tab-scanner .scan-status {
+      #tab-scanner-retired .scan-status {
         background: rgba(15,23,42,.74) !important;
         border: 1px solid rgba(148,163,184,.22) !important;
         border-radius: 12px !important;
@@ -217,14 +226,14 @@
         font-size: 12px !important;
       }
 
-      #tab-scanner .candidates-grid {
+      #tab-scanner-retired .candidates-grid {
         display: grid !important;
         grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)) !important;
         gap: 14px !important;
         align-items: stretch !important;
       }
 
-      #tab-scanner .scanner-approved-card {
+      #tab-scanner-retired .scanner-approved-card {
         position: relative;
         display: flex;
         flex-direction: column;
@@ -240,7 +249,7 @@
         overflow: hidden;
       }
 
-      #tab-scanner .scanner-star {
+      #tab-scanner-retired .scanner-star {
         position: absolute;
         top: 14px;
         right: 16px;
@@ -249,14 +258,14 @@
         line-height: 1;
       }
 
-      #tab-scanner .scanner-card-pair {
+      #tab-scanner-retired .scanner-card-pair {
         font-size: 24px;
         font-weight: 950;
         letter-spacing: -.04em;
         margin: 0 30px 8px 0;
       }
 
-      #tab-scanner .scanner-dir {
+      #tab-scanner-retired .scanner-dir {
         display: inline-flex;
         align-items: center;
         width: fit-content;
@@ -268,10 +277,10 @@
         text-transform: uppercase;
       }
 
-      #tab-scanner .scanner-dir.buy { color: #4ade80; background: rgba(34,197,94,.20); border: 1px solid rgba(34,197,94,.35); }
-      #tab-scanner .scanner-dir.sell { color: #fb7185; background: rgba(248,81,73,.20); border: 1px solid rgba(248,81,73,.35); }
+      #tab-scanner-retired .scanner-dir.buy { color: #4ade80; background: rgba(34,197,94,.20); border: 1px solid rgba(34,197,94,.35); }
+      #tab-scanner-retired .scanner-dir.sell { color: #fb7185; background: rgba(248,81,73,.20); border: 1px solid rgba(248,81,73,.35); }
 
-      #tab-scanner .scanner-card-main {
+      #tab-scanner-retired .scanner-card-main {
         display: grid;
         grid-template-columns: .8fr 1fr;
         gap: 10px;
@@ -279,7 +288,7 @@
         margin: 12px 0 13px;
       }
 
-      #tab-scanner .scanner-confidence strong {
+      #tab-scanner-retired .scanner-confidence strong {
         display: block;
         font-size: 28px;
         line-height: 1;
@@ -287,25 +296,25 @@
         color: var(--text);
       }
 
-      #tab-scanner .scanner-confidence span,
-      #tab-scanner .scanner-meta span,
-      #tab-scanner .scanner-levels span {
+      #tab-scanner-retired .scanner-confidence span,
+      #tab-scanner-retired .scanner-meta span,
+      #tab-scanner-retired .scanner-levels span {
         display: block;
         color: var(--muted);
         font-size: 11px;
       }
 
-      #tab-scanner .scanner-meta {
+      #tab-scanner-retired .scanner-meta {
         display: grid;
         gap: 4px;
         font-size: 12px;
       }
 
-      #tab-scanner .scanner-meta strong { color: var(--text); font-weight: 750; }
-      #tab-scanner .scanner-meta .up { color: #4ade80; font-size: 16px; }
-      #tab-scanner .scanner-meta .down { color: #fb7185; font-size: 16px; }
+      #tab-scanner-retired .scanner-meta strong { color: var(--text); font-weight: 750; }
+      #tab-scanner-retired .scanner-meta .up { color: #4ade80; font-size: 16px; }
+      #tab-scanner-retired .scanner-meta .down { color: #fb7185; font-size: 16px; }
 
-      #tab-scanner .scanner-levels {
+      #tab-scanner-retired .scanner-levels {
         display: grid;
         grid-template-columns: repeat(2, minmax(0,1fr));
         gap: 8px 10px;
@@ -317,11 +326,11 @@
         font-size: 11px;
       }
 
-      #tab-scanner .scanner-levels div {
+      #tab-scanner-retired .scanner-levels div {
         min-width: 0;
       }
 
-      #tab-scanner .scanner-levels strong {
+      #tab-scanner-retired .scanner-levels strong {
         display: block;
         color: var(--text);
         font-size: 12px;
@@ -331,7 +340,7 @@
         text-overflow: clip;
       }
 
-      #tab-scanner .scanner-thesis {
+      #tab-scanner-retired .scanner-thesis {
         color: #b6c4d8;
         font-size: 12px;
         line-height: 1.55;
@@ -339,7 +348,7 @@
         overflow-wrap: anywhere;
       }
 
-      #tab-scanner .scanner-place-btn {
+      #tab-scanner-retired .scanner-place-btn {
         margin-top: auto;
         width: 100%;
         min-height: 43px;
@@ -347,15 +356,15 @@
         font-weight: 950;
       }
 
-      #tab-scanner .rejected-list,
-      #tab-scanner .no-setup-list {
+      #tab-scanner-retired .rejected-list,
+      #tab-scanner-retired .no-setup-list {
         display: grid !important;
         grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
         gap: 12px !important;
         align-items: stretch !important;
       }
 
-      #tab-scanner .scanner-reject-card {
+      #tab-scanner-retired .scanner-reject-card {
         position: relative;
         min-width: 0;
         min-height: 156px;
@@ -368,7 +377,7 @@
         overflow: hidden;
       }
 
-      #tab-scanner .scanner-reject-x {
+      #tab-scanner-retired .scanner-reject-x {
         position: absolute;
         top: 10px;
         right: 12px;
@@ -382,7 +391,7 @@
         font-size: 14px;
       }
 
-      #tab-scanner .scanner-reject-top {
+      #tab-scanner-retired .scanner-reject-top {
         display: grid;
         grid-template-columns: 1fr auto;
         gap: 10px;
@@ -390,44 +399,44 @@
         align-items: start;
       }
 
-      #tab-scanner .scanner-reject-pair {
+      #tab-scanner-retired .scanner-reject-pair {
         font-size: 16px;
         font-weight: 950;
       }
 
-      #tab-scanner .scanner-reject-score strong {
+      #tab-scanner-retired .scanner-reject-score strong {
         display: block;
         font-size: 22px;
         line-height: 1;
       }
 
-      #tab-scanner .scanner-reject-score span,
-      #tab-scanner .scanner-reject-trend {
+      #tab-scanner-retired .scanner-reject-score span,
+      #tab-scanner-retired .scanner-reject-trend {
         display: block;
         color: var(--muted);
         font-size: 11px;
       }
 
-      #tab-scanner .scanner-sparkline {
+      #tab-scanner-retired .scanner-sparkline {
         width: 78px;
         height: 26px;
         opacity: .9;
       }
 
-      #tab-scanner .scanner-reject-divider {
+      #tab-scanner-retired .scanner-reject-divider {
         height: 1px;
         margin: 10px 0 8px;
         background: linear-gradient(90deg, rgba(148,163,184,.22), transparent);
       }
 
-      #tab-scanner .scanner-reason-label {
+      #tab-scanner-retired .scanner-reason-label {
         color: #fb7185;
         font-size: 11px;
         font-weight: 950;
         margin-bottom: 4px;
       }
 
-      #tab-scanner .scanner-reject-card p {
+      #tab-scanner-retired .scanner-reject-card p {
         margin: 0;
         color: #b6c4d8;
         font-size: 12px;
@@ -435,15 +444,15 @@
         overflow-wrap: anywhere;
       }
 
-      #tab-scanner .rejected-row,
-      #tab-scanner .nosetup-row {
+      #tab-scanner-retired .rejected-row,
+      #tab-scanner-retired .nosetup-row {
         display: block !important;
         min-height: auto !important;
         white-space: normal !important;
       }
 
       @media (max-width: 1180px) {
-        #tab-scanner.active {
+        #tab-scanner-retired {
           grid-template-columns: 1fr !important;
           grid-template-areas:
             "scan"

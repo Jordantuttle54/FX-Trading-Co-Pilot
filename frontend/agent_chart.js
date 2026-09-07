@@ -231,9 +231,15 @@
         <aside class="chart-account-panel" id="chartAccountPanel"><div class="muted small">Loading paper account...</div></aside>
       </div>
     `;
-    const firstCard = tradesTab.querySelector('.agent-card');
-    if (firstCard && firstCard.parentNode) firstCard.parentNode.insertBefore(card, firstCard.nextSibling);
-    else tradesTab.prepend(card);
+    // The Trade tab now gives the chart a fixed host, so its position no
+    // longer depends on which card happens to be first in the DOM.
+    const host = qs('tradeDeskChartHost');
+    if (host) host.appendChild(card);
+    else {
+      const firstCard = tradesTab.querySelector('.agent-card');
+      if (firstCard && firstCard.parentNode) firstCard.parentNode.insertBefore(card, firstCard.nextSibling);
+      else tradesTab.prepend(card);
+    }
     qs('chartPair')?.addEventListener('change', () => window.loadAgentChart());
     qs('chartTimeframe')?.addEventListener('change', () => window.loadAgentChart());
     qs('chartTradeSelect')?.addEventListener('change', () => window.loadAgentChart({ keepTradesCache: true }));
