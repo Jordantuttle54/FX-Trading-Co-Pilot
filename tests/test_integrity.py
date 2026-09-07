@@ -66,16 +66,46 @@ check("no forged trade reached the store",
 
 # ---- provenance ------------------------------------------------------------
 def label(**t): return names._origin_label(t)
-check("the agent's own trades are AI", label(trade_origin="agent_auto") == "AI")
-check("a hand-placed quick trade is Personal", label(trade_origin="personal_quick_open") == "Personal")
-check("executing a scanner setup yourself is Personal",
-      label(trade_origin="scanner_manual_execute") == "Personal")
-check("an AI-sourced setup you opened is still yours",
-      label(trade_origin="ai_quick_open") == "Personal")
-check("a trade with no recorded origin is Unknown, not AI", label(setup_label="Whatever") == "Unknown")
+check("the agent's own trades read AGENT TRADE", label(trade_origin="agent_auto") == "AGENT TRADE")
+check("a scanner setup you executed reads Manual-Scanner",
+      label(trade_origin="scanner_manual_execute") == "Manual-Scanner")
+check("an AI-found setup opened from the chart is also Manual-Scanner",
+      label(trade_origin="ai_quick_open") == "Manual-Scanner")
+check("levels you drew yourself are Personal", label(trade_origin="personal_quick_open") == "Personal")
+
+# Older rows recorded no origin. The agent did not exist then, so they were all
+# placed by a person - setup_type says whether the scanner found the setup.
+check("a legacy trend-continuation row is Manual-Scanner, not Unknown",
+      label(setup_type="live_data_trend_continuation") == "Manual-Scanner")
+check("a legacy mean-reversion row is Manual-Scanner",
+      label(setup_type="live_data_mean_reversion") == "Manual-Scanner")
+check("a legacy personal row is Personal",
+      label(setup_type="personal_quick_paper_trade") == "Personal")
+check("a genuinely unattributable row is still Unknown", label(setup_label="Whatever") == "Unknown")
 # The old substring test matched the letters "ai" anywhere in the setup text.
-check("a setup containing the letters 'ai' is not mislabelled AI",
+check("a setup containing the letters 'ai' is not mislabelled",
       label(setup_label="Waiting for available retest") == "Unknown")
+check("nothing is credited to the agent by inference",
+      all(label(setup_type=k) != "AGENT TRADE" for k in base.LEGACY_SETUP_ORIGINS))
+
+# The performance split must bucket legacy rows the same way, or the
+# AI-versus-manual comparison silently drops every trade placed before origins
+# were recorded.
+base.TRADES.clear()
+base.TRADES.extend([
+    {"id": "l1", "user_name": USER, "status": "closed", "pair": "EUR/GBP", "direction": "buy",
+     "result_r": 1.0, "result_money": 50.0, "risk_amount": 50.0, "confidence": 88,
+     "setup_type": "live_data_trend_continuation", "setup_label": "Live-data trend continuation",
+     "created_at": "2026-09-01T10:00:00", "closed_at": "2026-09-01T12:00:00"},
+    {"id": "l2", "user_name": USER, "status": "closed", "pair": "EUR/GBP", "direction": "buy",
+     "result_r": -1.0, "result_money": -50.0, "risk_amount": 50.0, "confidence": 0,
+     "trade_origin": "agent_auto", "setup_type": "live_data_trend_continuation",
+     "created_at": "2026-09-02T10:00:00", "closed_at": "2026-09-02T12:00:00"},
+])
+buckets = base._group_perf(base.TRADES, base.origin_label)
+check("legacy scanner rows land under Manual-Scanner", "Manual-Scanner" in buckets)
+check("the agent's row lands under AGENT TRADE", "AGENT TRADE" in buckets)
+check("they are not lumped together", buckets["Manual-Scanner"]["total_r"] != buckets["AGENT TRADE"]["total_r"])
 
 # ---- the loss limits must stop a person, not just the agent ---------------
 # These were reported as a hardcoded 0.0 by every status endpoint and enforced

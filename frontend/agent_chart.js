@@ -28,6 +28,7 @@
   let openTradesCache = [];
   let allTradesCache = [];
   let latestPricesByPair = {};
+  let latestQuotesByPair = {};
   let openTradesLoadedAt = 0;
   let allTradesLoadedAt = 0;
   let chartLoadSeq = 0;
@@ -140,6 +141,12 @@
       .chart-shell.chart-expanded #agentLiveChart { height:720px; }
       .chart-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(7,13,24,.78); color:var(--text-muted); z-index:4; }
       .chart-status-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+      .chart-quote-strip { display:flex; flex-wrap:wrap; gap:14px; align-items:baseline; padding:8px 12px; margin-bottom:8px; border:1px solid var(--border); background:var(--bg3); font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13px; font-variant-numeric:tabular-nums; }
+      .chart-quote-strip:empty { display:none; }
+      .chart-quote-strip.invented { color:var(--red); border-color:var(--red); font-weight:600; }
+      .chart-quote-strip .q-bid { color:var(--red); }
+      .chart-quote-strip .q-ask { color:var(--green); }
+      .chart-quote-strip .q-spread, .chart-quote-strip .q-age { color:var(--text-muted); font-size:11px; }
       .chart-pill { border:1px solid var(--border); background:var(--bg3); border-radius:999px; padding:5px 10px; font-size:12px; color:var(--text-muted); }
       .chart-pill strong { color:var(--text); }
       .chart-live-on { border-color:rgba(34,197,94,.5); color:#86efac; }
@@ -216,6 +223,7 @@
       <div class="chart-workspace">
         <div class="chart-main-panel">
           <div class="chart-frame"><div id="agentLiveChart"></div><div id="chartLoading" class="chart-loading" style="display:none">Loading chart...</div></div>
+          <div id="chartQuoteStrip" class="chart-quote-strip"></div>
           <div id="chartStatus" class="chart-status-row"></div>
           <div id="chartWarnings"></div>
           <div id="chartTrades" class="chart-trade-list"></div>
@@ -324,19 +332,33 @@
   function tradeLabel(trade) {
     const existing = trade.display_name || trade.friendly_name || trade.trade_name || trade.short_name || trade.label || '';
     if (existing) return String(existing);
-    // Mirrors ORIGIN_LABELS in backend/paper_mvp_trade_names.py. The old test
-    // asked whether the origin merely contained the letters "ai", which is
-    // true of "ai_quick_open" (a trade you placed) and false of "agent_auto"
-    // (one the agent placed on its own) - so it labelled both backwards.
-    // Only the agent acting unattended is "AI"; anything you clicked is yours.
+    // Mirrors ORIGIN_LABELS / LEGACY_SETUP_ORIGINS in backend/paper_mvp_persistent.py.
+    // Only the agent trading unattended is an AGENT TRADE. A setup the scanner
+    // found but you chose to execute is Manual-Scanner. Levels you drew
+    // yourself are Personal. Older rows predate origins being recorded, and
+    // the agent did not exist then, so setup_type - an exact enum, not free
+    // text - says which of the two a person used.
     const ORIGIN_LABELS = {
-      agent_auto: 'AI',
-      ai_quick_open: 'Personal',
+      agent_auto: 'AGENT TRADE',
+      scanner_manual_execute: 'Manual-Scanner',
+      ai_quick_open: 'Manual-Scanner',
       personal_quick_open: 'Personal',
-      scanner_manual_execute: 'Personal',
+      manual_copilot: 'Personal',
     };
-    const rawOrigin = String(trade.trade_origin || trade.origin || '').toLowerCase();
-    const origin = trade.trade_origin_label || ORIGIN_LABELS[rawOrigin] || 'Unknown';
+    const LEGACY_SETUP_ORIGINS = {
+      live_data_trend_continuation: 'scanner_manual_execute',
+      live_data_mean_reversion: 'scanner_manual_execute',
+      personal_quick_paper_trade: 'personal_quick_open',
+      manual_copilot_paper_trade: 'manual_copilot',
+    };
+    function resolveOrigin(t) {
+      const o = String(t.trade_origin || t.origin || '').trim().toLowerCase();
+      if (ORIGIN_LABELS[o]) return ORIGIN_LABELS[o];
+      const setup = String(t.setup_type || '').trim().toLowerCase();
+      const legacy = LEGACY_SETUP_ORIGINS[setup];
+      return legacy ? ORIGIN_LABELS[legacy] : 'Unknown';
+    }
+    const origin = trade.trade_origin_label || resolveOrigin(trade);
     const pair = trade.pair || activeChartMeta.pair || '';
     const raw = String(trade.direction || '').toLowerCase();
     const direction = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
@@ -460,7 +482,7 @@
     applyChartPriceFormatting(data.pair || activeChartMeta.pair);
     const quote = data.current_price || {};
     if (quote.price) {
-      latestPricesByPair[data.pair || activeChartMeta.pair] = Number(quote.price);
+      recordQuote(data.pair || activeChartMeta.pair, quote, data.provider);
       setCurrentPriceLine(Number(quote.price));
     }
     visibleTradeLines().forEach(t => {
@@ -492,9 +514,57 @@
     return r !== null ? r * tradeRiskMoney(trade) : 0;
   }
 
+  // The chart used to keep only the mid, so every open position on this panel
+  // looked worth about half a spread more than it was - and an invented
+  // fallback price was charted and priced as though it were real. Both are the
+  // same faults the journal had; keep the whole quote so neither can recur.
+  function recordQuote(pair, quote, provider) {
+    if (!pair) return;
+    const invented = /synthetic|failed|fallback/i.test(String(provider || quote.provider || ''));
+    const mid = num(quote.price, num(quote.mid, null));
+    latestQuotesByPair[pair] = {
+      mid, invented,
+      bid: num(quote.bid, mid),
+      ask: num(quote.ask, mid),
+      spreadPips: num(quote.spread_pips, null),
+      at: Date.now(),
+    };
+    // Other scripts read this expecting a plain number - keep that shape.
+    latestPricesByPair[pair] = invented ? null : mid;
+    renderQuoteStrip(pair);
+  }
+
+  // A long is closed by selling into the bid; a short by buying at the ask.
+  function closeSidePrice(pair, direction) {
+    const q = latestQuotesByPair[pair];
+    if (!q || q.invented) return null;
+    const side = String(direction || '').toLowerCase() === 'sell' ? q.ask : q.bid;
+    return num(side, num(q.mid, null));
+  }
+
+  function renderQuoteStrip(pair) {
+    const el = qs('chartQuoteStrip');
+    if (!el || pair !== activeChartMeta.pair) return;
+    const q = latestQuotesByPair[pair];
+    if (!q) { el.textContent = ''; return; }
+    if (q.invented) {
+      el.className = 'chart-quote-strip invented';
+      el.textContent = 'NO LIVE PRICE - market data unavailable';
+      return;
+    }
+    const age = Math.round((Date.now() - q.at) / 1000);
+    const spread = q.spreadPips !== null ? `${q.spreadPips.toFixed(1)}p` : '--';
+    el.className = 'chart-quote-strip';
+    el.innerHTML =
+      `<span class="q-bid">BID ${formatPrice(q.bid, pair)}</span>` +
+      `<span class="q-ask">ASK ${formatPrice(q.ask, pair)}</span>` +
+      `<span class="q-spread">SPREAD ${spread}</span>` +
+      `<span class="q-age">${age <= 1 ? 'live' : age + 's ago'}</span>`;
+  }
+
   function estimateOpenTradeMoney(trade) {
     const pair = trade.pair || activeChartMeta.pair;
-    const current = num(latestPricesByPair[pair], null);
+    const current = closeSidePrice(pair, trade.direction);
     const entry = entryValue(trade);
     const stop = slValue(trade);
     if (current === null || entry === null || stop === null || current === entry || stop === entry) return 0;
@@ -516,7 +586,7 @@
     const totalProfit = realised + openPnl;
     const rows = openTradesCache.length ? openTradesCache.map(t => {
       const pnl = estimateOpenTradeMoney(t);
-      const current = latestPricesByPair[t.pair];
+      const current = closeSidePrice(t.pair, t.direction);
       return `
         <div class="chart-position-row">
           <div><div class="chart-position-name">${escapeHtml(tradeLabel(t))}</div><div class="chart-position-meta">${escapeHtml(t.pair || '')} ${escapeHtml(String(t.direction || '').toUpperCase())} | Current ${formatPrice(current, t.pair || activeChartMeta.pair)}</div></div>
@@ -549,10 +619,15 @@
   }
 
   function updateCurrentCandleFromTick(tick) {
-    if (!candleSeries || !currentCandles.length) return;
     const price = Number(tick.price);
     if (!Number.isFinite(price)) return;
-    latestPricesByPair[tick.pair || activeChartMeta.pair] = price;
+    // Record the quote before the candle guard below. The price strip, the
+    // open-position P&L and the account panel all read from this, and none of
+    // them depend on the candle canvas having initialised - if the charting
+    // library fails to load, the numbers should still be right rather than
+    // silently frozen at whatever the last full page load happened to see.
+    recordQuote(tick.pair || activeChartMeta.pair, tick, tick.provider);
+    if (!candleSeries || !currentCandles.length) return;
     applyChartPriceFormatting(tick.pair || activeChartMeta.pair);
     const candleTime = bucketTime(convertTime(tick.timestamp || tick.generated_at || new Date().toISOString()), activeChartMeta.timeframe);
     let last = currentCandles[currentCandles.length - 1];
@@ -572,7 +647,11 @@
   }
 
   async function pollLiveTick() {
-    if (!liveCandleEnabled || !candleSeries) return;
+    // Gated on the user's live toggle only. It used to also require the candle
+    // series, which tied the price feed to the chart canvas: if the charting
+    // library failed to load, bid/ask, the spread and every open position's
+    // running P&L quietly stopped updating with nothing to say so.
+    if (!liveCandleEnabled) return;
     const pair = qs('chartPair')?.value || activeChartMeta.pair || 'GBP/USD';
     try {
       const tick = await chartApi(`/api/agent/chart/tick?pair=${encodeURIComponent(pair)}`);

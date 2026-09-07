@@ -248,6 +248,11 @@ def _save_personal_trade(user: str, req: QuickOpenRequest) -> Dict[str, Any]:
 async def quick_open_personal_trade(req: QuickOpenRequest, user: str = Depends(base.current_user)):
     base.require_live_market_data()
     base.require_trading_allowed(user)
+    # score_candidate applies the news guard for scanner setups; a hand-drawn
+    # trade never passes through it, and gaps through a stop just the same.
+    news = base.news_guard.check(_pair(req.pair))
+    if news.get("blocked"):
+        raise HTTPException(status_code=409, detail=news["reason"])
     saved = _save_personal_trade(user, req)
     return {
         "trade": saved,
