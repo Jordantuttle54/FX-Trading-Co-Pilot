@@ -11,6 +11,19 @@
     try { return JSON.stringify(err); } catch (_) { return String(err); }
   }
 
+  /* An error body carries a message, the broker's reason, and the whole
+     candidate for the record. Stringifying all of it put a wall of JSON in an
+     alert box with the one sentence that mattered buried in the middle. The
+     full object stays on error.detail. */
+  function describeDetail(detail) {
+    if (!detail) return '';
+    if (typeof detail === 'string') return detail;
+    const parts = [detail.message, detail.error]
+      .filter(v => typeof v === 'string' && v.trim());
+    if (parts.length) return parts.join(' ');
+    try { return JSON.stringify(detail); } catch (_) { return String(detail); }
+  }
+
   async function phase1Api(path, options = {}) {
     const res = await fetch(path, {
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -19,7 +32,7 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const detail = data.detail || data.message || res.statusText;
-      const error = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      const error = new Error(describeDetail(detail) || res.statusText);
       error.status = res.status;
       error.detail = detail;
       throw error;
