@@ -33,6 +33,7 @@ opens a real position.
 | `test_pricing.py` | That a trade is entered at a price it could actually have been filled at (ask for a buy, bid for a sell) without changing the stop distance or R:R, and that the backtest charges a spread so its results stay comparable to live. |
 | `test_integrity.py` | That no deployment can open a trade while its prices are invented, that the client cannot dictate a trade's entry/stop/target/risk, and that a trade's origin says who really placed it. |
 | `test_execution.py` | The broker order path: the stop and target ride the actual fill rather than a pre-fill quote, so a slipped fill still risks exactly what the position was sized for. Also that live trading stays locked. |
+| `test_performance.py` | That the drawdown figure is computed rather than hardcoded to zero, and that the per-pair, per-setup and per-origin breakdowns actually split the trades — including the agent's results against your own. |
 | `test_notify.py` | Alerting: what is worth interrupting someone for and what stays quiet, plus that a dead webhook cannot stop the agent trading. |
 | `test_stale.py` | Refusing to trade on a closed market: a stale quote, a quote whose age can't be established, or one the broker flags as non-tradeable. With the London window switched off, this is the only thing keeping the agent out of the weekend. |
 
