@@ -22,13 +22,17 @@ def secret_value() -> str:
 def passwordless_login_enabled() -> bool:
     """Whether anyone naming an allowed user can log in with no passcode.
 
-    This defaulted to ON, which on a public deployment means the allowlist is
+    This defaults to ON, which on a public deployment means the allowlist is
     the only thing between the internet and the account - and the allowlist
-    defaults to "Jake,Jordan". Fine while nothing was at stake; not something
-    to carry into live money. It now has to be switched on deliberately:
-    set TEMP_PASSWORDLESS_LOGIN=true to get the old behaviour back.
+    defaults to "Jake,Jordan".
+
+    MUST BE TURNED OFF BEFORE REAL MONEY. Deliberately left on for now while
+    the site is unannounced and nothing is at stake; flipping it is a one-line
+    change here, but it locks anyone out who does not know AUTH_PASSCODE, so
+    it belongs with the go-live checklist rather than in a correctness fix.
+    See docs/ROAD_TO_LIVE.md.
     """
-    return os.getenv("TEMP_PASSWORDLESS_LOGIN", "false").lower() in ("1", "true", "yes", "on")
+    return os.getenv("TEMP_PASSWORDLESS_LOGIN", "true").lower() in ("1", "true", "yes", "on")
 
 
 PLACEHOLDER_SIGNING_KEY = "change-me-in-vercel"

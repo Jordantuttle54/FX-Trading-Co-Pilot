@@ -169,6 +169,18 @@ None of it is optional, and none of it depends on the choice of broker.
    size the agent cannot exceed whatever the strategy asks for. Live trading is
    deliberately locked in the code today (`MODE_LIVE` in `backend/execution.py`); that
    lock should only ever open on purpose.
+8. **Close the front door.** `TEMP_PASSWORDLESS_LOGIN` defaults to **true**, so anyone
+   who names an allowed user logs in with no passcode — and `AUTH_ALLOWED_USERS` defaults
+   to `Jake,Jordan`. That is deliberate while the site is unannounced and nothing is at
+   stake, and it must be off before a funded account exists. Flipping the default in
+   `backend/auth.py` locks out anyone who does not know `AUTH_PASSCODE`, so set and
+   confirm that passcode first. A "keep me logged in" option belongs with this change,
+   or the friction will tempt it back off.
+9. **Give previews their own database.** Preview deployments do not inherit
+   Production-scoped environment variables, but they *do* share `DATABASE_URL` — so a
+   build with no market-data credentials reads and writes the real wallet. Opening trades
+   from such a deployment is now blocked (`market_data_is_live()`), but the cleaner fix is
+   a separate database for previews so they cannot touch production data at all.
 
 ---
 
