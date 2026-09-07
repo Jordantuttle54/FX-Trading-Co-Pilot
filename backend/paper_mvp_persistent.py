@@ -1131,20 +1131,44 @@ def close_trade(user: str, trade_id: str, close_price: float, reason: str) -> Di
     return t
 
 
+def _close_side(quote: Dict[str, Any], direction: str) -> Optional[float]:
+    """The price this position would actually close at.
+
+    A long is closed by selling into the bid; a short by buying at the ask.
+    Testing a stop against the mid triggers it late on both sides, which also
+    made this path disagree with paper_mvp_auto_close - the same trade could
+    be "stopped out" by one checker and still open according to the other.
+    """
+    side = quote.get("bid") if str(direction).lower() == "buy" else quote.get("ask")
+    for value in (side, quote.get("price")):
+        try:
+            price = float(value)
+        except (TypeError, ValueError):
+            continue
+        if price > 0:
+            return price
+    return None
+
+
 def manage_trades(user: str, prices: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+    quotes: Dict[str, Dict[str, Any]] = {}
     if not prices:
         # Only ever close against prices that actually came from the broker.
         # snapshot() silently substitutes synthetic prices when the OANDA call
         # fails, and those are far enough from the real market to stop out
         # every open position at once.
-        prices = {
-            q["pair"]: float(q["price"])
+        quotes = {
+            q["pair"]: q
             for q in snapshot().get("quotes", [])
             if "synthetic" not in str(q.get("source", "")).lower()
         }
+        prices = {pair: float(q["price"]) for pair, q in quotes.items()}
     actions = []
     for t in list_trades(user, "open"):
-        price = prices.get(t["pair"])
+        # Caller-supplied prices are plain mids with no book behind them, so
+        # they are used as-is; a real quote picks the side this trade exits on.
+        quote = quotes.get(t["pair"])
+        price = _close_side(quote, t.get("direction")) if quote else prices.get(t["pair"])
         if price is None:
             continue
         if t["direction"] == "buy":

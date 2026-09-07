@@ -65,6 +65,41 @@ check("manage_trades closes nothing on synthetic prices", base.manage_trades("Ja
 base.snapshot = lambda: real_snap
 check("manage_trades closes nothing when price is between levels", base.manage_trades("Jake") == [])
 
+# --- manage_trades must test the side the trade actually closes on ----------
+# A long exits into the bid. With bid 1.29990 / ask 1.30010 and a stop at
+# 1.29995 the position IS stopped out, but only the bid says so - the mid
+# (1.30000) sits above the stop and would leave it open. This is what used to
+# make manage_trades and the auto-close checker disagree about the same trade.
+base.TRADES.clear()
+# An earlier check above stubs list_trades to a fixed row; these need the real
+# store back so close_trade can find the trade it just decided to close.
+base.list_trades = ac.compat.compat_list_trades
+base.TRADES.append({
+    "id": "side1", "user_name": "Jake", "status": "open", "pair": "GBP/USD",
+    "direction": "buy", "entry_price": 1.30500, "entry": 1.30500,
+    "stop_loss": 1.29995, "take_profit": 1.31500, "target": 1.31500,
+    "risk_amount": 50.0, "created_at": base.now(),
+})
+base.snapshot = lambda: {"provider": "oanda", "quotes": [{
+    "pair": "GBP/USD", "price": 1.30000, "bid": 1.29990, "ask": 1.30010,
+    "timestamp": base.now(), "tradeable": True, "source": "oanda-practice"}]}
+acted = base.manage_trades("Jake")
+check("a long is stopped out on the bid, not the mid", len(acted) == 1)
+if acted:
+    check("and fills at the stop level", acted[0]["close_price"] == 1.29995)
+    check("for the intended -1R", round(float(acted[0]["result_r"]), 2) == -1.0)
+
+# The mirror case: a short exits at the ask, so the same quote must not stop
+# out a short whose stop sits above that ask.
+base.TRADES.clear()
+base.TRADES.append({
+    "id": "side2", "user_name": "Jake", "status": "open", "pair": "GBP/USD",
+    "direction": "sell", "entry_price": 1.29500, "entry": 1.29500,
+    "stop_loss": 1.30020, "take_profit": 1.28500, "target": 1.28500,
+    "risk_amount": 50.0, "created_at": base.now(),
+})
+check("a short with its stop above the ask stays open", base.manage_trades("Jake") == [])
+
 print()
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)
