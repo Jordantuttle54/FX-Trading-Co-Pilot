@@ -116,14 +116,36 @@ def summarise_run(run: Dict[str, Any]) -> Optional[Dict[str, str]]:
         # Every other halt is routine and stays quiet.
         return None
 
-    stale = [s for s in (run.get("skipped") or [])
+    skipped = run.get("skipped") or []
+
+    stale = [s for s in skipped
              if "market looks closed" in str(s.get("reason", "")).lower()
              or "fallback prices" in str(s.get("reason", "")).lower()]
-    if stale and len(stale) == len(run.get("skipped") or []):
+    if stale and len(stale) == len(skipped):
         # Only when it blocked the whole run, not one odd pair.
         return {
             "event": "agent_stale_data",
             "title": "Agent could not trade - market data problem",
             "message": stale[0].get("reason", "Market data unavailable."),
+        }
+
+    # The news guard fails closed: if the calendar cannot be fetched it refuses
+    # every pair. That is the right call, but it is indistinguishable from a
+    # quiet market unless someone is told - the agent would sit out for days
+    # looking like it simply found nothing, which is the worst way for a
+    # safety feature to fail. Alerted on the same terms as stale data: only
+    # when it accounts for the whole run.
+    blind = [s for s in skipped if s.get("news_unavailable")]
+    if blind and len(blind) == len(skipped):
+        return {
+            "event": "agent_news_blind",
+            "title": "Agent stopped trading - economic calendar unreachable",
+            "message": (
+                f"No trades were considered on any of {len(blind)} pairs because the calendar "
+                "provider could not be reached, and the news guard refuses to trade blind "
+                "through an unknown release. Check the provider, or set "
+                "NEWS_GUARD_FAIL_OPEN=true to trade anyway.\n\n"
+                + str(blind[0].get("reason", ""))
+            ),
         }
     return None

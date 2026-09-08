@@ -1374,7 +1374,7 @@ async def market_candles(pair: str = "GBP/USD", interval: str = "1h", count: int
     return {"pair": pair, "provider": "oanda" if oanda_configured() else "synthetic-fallback", "candles": get_candles(pair), "warning": "" if oanda_configured() else "Synthetic fallback data. Add OANDA practice credentials for live candle data."}
 
 @app.get("/api/calendar")
-async def calendar(refresh: bool = False):
+async def calendar(refresh: bool = False, pair: str = ""):
     # Previously returned two invented "placeholder" events every day, dated
     # today and marked High impact, which read exactly like a real calendar
     # while nothing consulted it. Now it reports whatever the configured
@@ -1410,7 +1410,7 @@ async def calendar(refresh: bool = False):
             "The provider answered but sent no events at all. That may be a quiet week, or the "
             "endpoint may not be the calendar one - check it returns a list of releases."
         )
-    return {
+    payload = {
         "provider": state["provider"],
         "generated_at": now(),
         "events": state["events"],
@@ -1422,6 +1422,14 @@ async def calendar(refresh: bool = False):
         "rows_understood": state["parsed_count"],
         "warnings": warnings,
     }
+    # ?pair=GBP/USD answers the only question this guard exists to answer:
+    # would it stop me opening this, right now, and why. Until this, the guard
+    # could only be taken on trust from the outside - its behaviour was
+    # visible in the test suite and nowhere else, which is a poor place for a
+    # control that silently decides whether the agent trades at all.
+    if pair:
+        payload["pair_check"] = {"pair": pair, **news_guard.check(pair)}
+    return payload
 
 
 @app.post("/api/scan")

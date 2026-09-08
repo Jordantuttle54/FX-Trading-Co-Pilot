@@ -280,7 +280,7 @@ def check(pair: str, now: Optional[datetime] = None) -> Dict[str, Any]:
     if not configured():
         return {
             "blocked": False, "reason": None, "events": [], "active": False,
-            "provider": "none",
+            "provider": "none", "unavailable": False,
             "note": "No economic calendar provider configured, so no news blackout is in force.",
         }
 
@@ -291,18 +291,24 @@ def check(pair: str, now: Optional[datetime] = None) -> Dict[str, Any]:
         if FAIL_OPEN:
             return {
                 "blocked": False, "reason": None, "events": [], "active": True,
-                "provider": provider_name(),
+                "provider": provider_name(), "unavailable": True,
                 "note": f"Economic calendar unavailable ({state['error']}) - trading anyway because NEWS_GUARD_FAIL_OPEN is set.",
             }
+        # unavailable distinguishes "the calendar is down so we are refusing
+        # blind" from "a release is imminent". They read the same to a caller
+        # matching on the reason text, but they mean opposite things: one is a
+        # working guard doing its job on one pair, the other is an outage
+        # refusing every pair until someone fixes it.
         return {
             "blocked": True,
             "reason": f"Economic calendar unavailable, so upcoming releases are unknown ({state['error']}).",
-            "events": [], "active": True, "provider": provider_name(),
+            "events": [], "active": True, "provider": provider_name(), "unavailable": True,
         }
 
     hits = blocking_events(pair, now, state.get("events") or [])
     if not hits:
-        return {"blocked": False, "reason": None, "events": [], "active": True, "provider": provider_name()}
+        return {"blocked": False, "reason": None, "events": [], "active": True,
+                "provider": provider_name(), "unavailable": False}
 
     soonest = min(hits, key=lambda e: abs(e["minutes_away"]))
     minutes = soonest["minutes_away"]
@@ -315,6 +321,7 @@ def check(pair: str, now: Optional[datetime] = None) -> Dict[str, Any]:
         "events": hits,
         "active": True,
         "provider": provider_name(),
+        "unavailable": False,
     }
 
 
