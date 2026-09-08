@@ -111,4 +111,48 @@ check("an https webhook is kept", saved["config"]["notify_webhook"]=="https://nt
 saved=client.post("/api/agent/agent-config",json={"notify_webhook":""},headers=H).json()
 check("clearing the webhook turns alerts off", saved["config"]["notify_webhook"]=="")
 
+# ---- the calendar going down must not look like a quiet market ------------
+# The news guard fails closed, so an unreachable calendar refuses every pair.
+# Without an alert the agent sits out indefinitely looking like it simply
+# found nothing - a safety feature failing in the least visible way possible.
+blind_run = {
+    "opened": [], "halted": False,
+    "skipped": [
+        {"pair": "GBP/USD", "reason": "Economic calendar unavailable, so upcoming releases are unknown (HTTPError: 401).", "news_unavailable": True},
+        {"pair": "EUR/USD", "reason": "Economic calendar unavailable, so upcoming releases are unknown (HTTPError: 401).", "news_unavailable": True},
+    ],
+}
+alert = notifier.summarise_run(blind_run)
+check("a calendar outage that blocks the whole run alerts", alert is not None)
+check("and is its own event, not a data-staleness one", alert["event"] == "agent_news_blind")
+check("the title says the agent stopped", "stopped trading" in alert["title"])
+check("and the message names the way out", "NEWS_GUARD_FAIL_OPEN" in alert["message"])
+
+# One pair blocked by a real release is the guard working, not an outage.
+mixed = {
+    "opened": [], "halted": False,
+    "skipped": [
+        {"pair": "GBP/USD", "reason": "USD Non-Farm Payrolls in 12 min - inside the 30 minute news blackout.", "news_unavailable": False},
+        {"pair": "EUR/USD", "reason": "No setup.", "news_unavailable": False},
+    ],
+}
+check("a real blackout does not raise the outage alarm", notifier.summarise_run(mixed) is None)
+
+# An outage on some pairs but not all is not a whole-run failure either.
+partial = {
+    "opened": [], "halted": False,
+    "skipped": [
+        {"pair": "GBP/USD", "reason": "Economic calendar unavailable.", "news_unavailable": True},
+        {"pair": "EUR/USD", "reason": "No setup.", "news_unavailable": False},
+    ],
+}
+check("a partial outage stays quiet", notifier.summarise_run(partial) is None)
+
+# Opened trades still win: something got through, so the run worked.
+opened_too = dict(blind_run, opened=[{"pair": "GBP/USD", "direction": "buy", "entry": 1.3,
+                                      "stop_loss": 1.29, "take_profit": 1.32,
+                                      "strategy": "trend", "confidence": 88}])
+check("a run that opened something reports that instead",
+      notifier.summarise_run(opened_too)["event"] == "agent_opened")
+
 print(); print("ALL PASS" if ok else "SOME FAILED"); sys.exit(0 if ok else 1)

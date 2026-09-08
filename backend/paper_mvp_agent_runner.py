@@ -405,7 +405,17 @@ def run_agent_once(user: str, trigger: str = "cron", dry_run: bool = False) -> D
             continue
 
         if best.get("status") != "trade_candidate":
-            skipped.append({"pair": pair, "reason": best.get("rejection_reason") or "No setup."})
+            # Carry the calendar's own verdict as a flag, not as prose. A run
+            # in which every pair was refused because the calendar could not
+            # be reached looks, in the skipped list, exactly like a quiet
+            # market - and the guard fails closed, so an outage silences the
+            # agent completely. summarise_run needs to tell the two apart
+            # without matching on the wording of a sentence.
+            skipped.append({
+                "pair": pair,
+                "reason": best.get("rejection_reason") or "No setup.",
+                "news_unavailable": bool((best.get("news_guard") or {}).get("unavailable")),
+            })
             continue
         if int(best.get("confidence") or 0) < config["min_confidence"]:
             skipped.append({"pair": pair, "reason": f"Confidence {best.get('confidence')}% below the agent's {config['min_confidence']}% floor."})

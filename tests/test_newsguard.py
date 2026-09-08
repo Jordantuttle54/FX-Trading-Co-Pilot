@@ -183,5 +183,23 @@ ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
 check("a USD release still blocks only USD pairs", ng.check("USD/JPY", NOW)["blocked"] is True)
 check("and leaves unrelated pairs alone", ng.check("EUR/GBP", NOW)["blocked"] is False)
 
+# ---- an outage is flagged as one ------------------------------------------
+# Callers need to tell "the calendar is down, refusing blind" from "a release
+# is imminent" without reading the wording of a sentence.
+ng._fetch_finnhub = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+down = ng.check("GBP/USD", NOW)
+check("an unreachable calendar blocks", down["blocked"] is True)
+check("and is flagged as unavailable", down["unavailable"] is True)
+
+ng._fetch_finnhub = lambda: [
+    {"time": at(10), "country": "US", "event": "Non-Farm Payrolls", "impact": "high"},
+]
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+real = ng.check("GBP/USD", NOW)
+check("a real release blocks too", real["blocked"] is True)
+check("but is not flagged as an outage", real["unavailable"] is False)
+check("and neither is a pair that is free to trade", ng.check("AUD/NZD", NOW)["unavailable"] is False)
+
 print(); print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)
