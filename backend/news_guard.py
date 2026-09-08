@@ -68,6 +68,24 @@ API_KEY = os.getenv("ECONOMIC_CALENDAR_API_KEY", "").strip()
 CUSTOM_URL = os.getenv("ECONOMIC_CALENDAR_URL", "").strip()
 
 # Country/region codes to the currency whose price they move.
+# Calendars tag an event that moves everything - a G20 or OPEC meeting, an
+# emergency central bank statement, a BRICS summit - with "ALL" instead of a
+# single currency. Left as an ordinary currency code it matches no pair, so
+# the events flagged as affecting the whole market are exactly the ones that
+# block nothing.
+#
+# The ambiguity is real: ALL is also the ISO code for the Albanian lek. It is
+# resolved in favour of the calendar's meaning because nothing here is quoted
+# in lek, and being wrong that way costs a few minutes of not trading, while
+# being wrong the other way means trading straight through the event. Override
+# with NEWS_GLOBAL_CURRENCY_CODES if a provider uses a different marker, or
+# set it empty to switch this off.
+GLOBAL_CURRENCY_CODES = {
+    s.strip().upper()
+    for s in os.getenv("NEWS_GLOBAL_CURRENCY_CODES", "ALL").split(",")
+    if s.strip()
+}
+
 COUNTRY_CURRENCY = {
     "US": "USD", "USA": "USD",
     "GB": "GBP", "UK": "GBP",
@@ -243,7 +261,8 @@ def blocking_events(pair: str, now: Optional[datetime] = None, events: Optional[
     window = timedelta(minutes=BLACKOUT_MINUTES)
     hits = []
     for event in events:
-        if event.get("currency") not in wanted:
+        currency = event.get("currency")
+        if currency not in GLOBAL_CURRENCY_CODES and currency not in wanted:
             continue
         if event.get("impact") not in BLOCK_IMPACTS:
             continue
@@ -288,9 +307,11 @@ def check(pair: str, now: Optional[datetime] = None) -> Dict[str, Any]:
     soonest = min(hits, key=lambda e: abs(e["minutes_away"]))
     minutes = soonest["minutes_away"]
     timing = f"in {abs(minutes):.0f} min" if minutes >= 0 else f"{abs(minutes):.0f} min ago"
+    who = ("All currencies:" if soonest["currency"] in GLOBAL_CURRENCY_CODES
+           else soonest["currency"])
     return {
         "blocked": True,
-        "reason": f"{soonest['currency']} {soonest['event']} {timing} - inside the {BLACKOUT_MINUTES:.0f} minute news blackout.",
+        "reason": f"{who} {soonest['event']} {timing} - inside the {BLACKOUT_MINUTES:.0f} minute news blackout.",
         "events": hits,
         "active": True,
         "provider": provider_name(),

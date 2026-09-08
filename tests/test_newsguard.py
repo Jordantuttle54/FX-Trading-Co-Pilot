@@ -138,5 +138,50 @@ check("without force the cached empty result stands", cached["parsed_count"] == 
 refreshed = ng.status(force=True)
 check("force=True refetches instead of serving the cache", refreshed["parsed_count"] == 1)
 
+# ---- an event that moves everything ---------------------------------------
+# ForexFactory tags a G20/OPEC/BRICS-style event with "ALL" rather than one
+# currency. Read as an ordinary code it matched no pair, so the events flagged
+# as affecting the whole market were the only ones that blocked nothing.
+ng._fetch_finnhub = lambda: [
+    {"time": at(10), "country": "ALL", "event": "Emergency G20 Statement", "impact": "high"},
+]
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+check("an ALL event blocks a GBP pair", ng.check("GBP/USD", NOW)["blocked"] is True)
+check("and a JPY pair it shares no currency with", ng.check("EUR/JPY", NOW)["blocked"] is True)
+check("and gold", ng.check("XAU/USD", NOW)["blocked"] is True)
+check("the reason does not read as a currency called ALL",
+      ng.check("GBP/USD", NOW)["reason"].startswith("All currencies:"))
+
+# Still bounded by impact and by the window, like any other event.
+ng._fetch_finnhub = lambda: [
+    {"time": at(10), "country": "ALL", "event": "Minor global thing", "impact": "low"},
+]
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+check("a low-impact ALL event does not block", ng.check("GBP/USD", NOW)["blocked"] is False)
+
+ng._fetch_finnhub = lambda: [
+    {"time": at(200), "country": "ALL", "event": "Distant summit", "impact": "high"},
+]
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+check("an ALL event outside the window does not block", ng.check("GBP/USD", NOW)["blocked"] is False)
+
+# The switch is configurable, and turning it off restores the old reading.
+ng.GLOBAL_CURRENCY_CODES = set()
+ng._fetch_finnhub = lambda: [
+    {"time": at(10), "country": "ALL", "event": "Emergency G20 Statement", "impact": "high"},
+]
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+check("with the marker cleared, ALL is just a currency again",
+      ng.check("GBP/USD", NOW)["blocked"] is False)
+ng.GLOBAL_CURRENCY_CODES = {"ALL"}
+
+# A normal event must not be widened by any of this.
+ng._fetch_finnhub = lambda: [
+    {"time": at(10), "country": "US", "event": "Non-Farm Payrolls", "impact": "high"},
+]
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+check("a USD release still blocks only USD pairs", ng.check("USD/JPY", NOW)["blocked"] is True)
+check("and leaves unrelated pairs alone", ng.check("EUR/GBP", NOW)["blocked"] is False)
+
 print(); print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)
