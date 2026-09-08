@@ -112,5 +112,31 @@ check("status reports the guard as active", st["active"] is True)
 check("status reports the window", st["blackout_minutes"] == ng.BLACKOUT_MINUTES)
 check("status carries the events", len(st["events"]) == 1)
 
+check("status counts what arrived", st["raw_count"] == 1)
+check("status counts what it could read", st["parsed_count"] == 1)
+
+# ---- a feed that answers cleanly but cannot be read ------------------------
+# The case that looks like good news and is not: 200 OK, rows present, none of
+# them in a shape normalise_event understands. Events come back empty with no
+# error, which is indistinguishable from a quiet week unless the counts are
+# kept separately.
+ng._fetch_finnhub = lambda: [
+    {"when": "next tuesday", "ccy": "USD", "name": "Non-Farm Payrolls", "importance": "high"},
+    {"when": "later", "ccy": "GBP", "name": "CPI", "importance": "high"},
+]
+ng._CACHE.update({"events": None, "fetched_at": None, "error": ""})
+unreadable = ng.status(force=True)
+check("an unreadable feed reports no error", unreadable["error"] == "")
+check("and no events", len(unreadable["events"]) == 0)
+check("but records that rows did arrive", unreadable["raw_count"] == 2)
+check("and that none of them could be read", unreadable["parsed_count"] == 0)
+
+# ---- force skips the cache ------------------------------------------------
+ng._fetch_finnhub = lambda: [{"time": at(8), "country": "US", "event": "CPI", "impact": "high"}]
+cached = ng.status()
+check("without force the cached empty result stands", cached["parsed_count"] == 0)
+refreshed = ng.status(force=True)
+check("force=True refetches instead of serving the cache", refreshed["parsed_count"] == 1)
+
 print(); print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

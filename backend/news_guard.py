@@ -174,14 +174,24 @@ _LOCK = threading.Lock()
 
 
 def upcoming_events(force: bool = False) -> Dict[str, Any]:
-    """Cached calendar. {events, error, fetched_at, provider}.
+    """Cached calendar. {events, error, fetched_at, provider, raw_count, parsed_count}.
 
     `error` non-empty means we could not establish what is coming - which is
     a different thing from "nothing is coming", and the callers below treat it
     that way.
+
+    raw_count and parsed_count exist to separate a third case that used to be
+    invisible. A feed can answer 200 with three hundred rows none of which
+    this code can read - wrong field names, a date format that will not parse
+    - and the result is an empty event list with no error at all, which looks
+    exactly like a quiet week. Whoever configured it would see a calendar
+    saying "nothing coming up" and believe the guard was working. Counting
+    what arrived against what survived normalisation makes that case
+    reportable.
     """
     if not configured():
-        return {"events": [], "error": "", "fetched_at": None, "provider": "none", "configured": False}
+        return {"events": [], "error": "", "fetched_at": None, "provider": "none",
+                "configured": False, "raw_count": 0, "parsed_count": 0}
 
     with _LOCK:
         fetched_at = _CACHE.get("fetched_at")
@@ -195,16 +205,19 @@ def upcoming_events(force: bool = False) -> Dict[str, Any]:
             return {
                 "events": _CACHE["events"], "error": _CACHE.get("error", ""),
                 "fetched_at": fetched_at.isoformat(), "provider": provider_name(), "configured": True,
+                "raw_count": _CACHE.get("raw_count", 0), "parsed_count": _CACHE.get("parsed_count", 0),
             }
 
         try:
             raw = _fetch_finnhub() if PROVIDER == "finnhub" else _fetch_custom()
             events = [e for e in (normalise_event(r) for r in raw) if e]
             events.sort(key=lambda e: e["time"])
-            _CACHE.update({"events": events, "fetched_at": datetime.now(timezone.utc), "error": ""})
+            _CACHE.update({"events": events, "fetched_at": datetime.now(timezone.utc), "error": "",
+                           "raw_count": len(raw), "parsed_count": len(events)})
             return {
                 "events": events, "error": "", "fetched_at": _CACHE["fetched_at"].isoformat(),
                 "provider": provider_name(), "configured": True,
+                "raw_count": len(raw), "parsed_count": len(events),
             }
         except Exception as exc:
             message = f"{type(exc).__name__}: {exc}"
@@ -217,6 +230,7 @@ def upcoming_events(force: bool = False) -> Dict[str, Any]:
                 "events": _CACHE.get("events") or [], "error": message,
                 "fetched_at": fetched_at.isoformat() if fetched_at else None,
                 "provider": provider_name(), "configured": True,
+                "raw_count": _CACHE.get("raw_count", 0), "parsed_count": _CACHE.get("parsed_count", 0),
             }
 
 
@@ -283,9 +297,13 @@ def check(pair: str, now: Optional[datetime] = None) -> Dict[str, Any]:
     }
 
 
-def status() -> Dict[str, Any]:
-    """What the Calendar tab needs to describe the guard honestly."""
-    state = upcoming_events()
+def status(force: bool = False) -> Dict[str, Any]:
+    """What the Calendar tab needs to describe the guard honestly.
+
+    force=True skips the cache, so a newly configured provider can be checked
+    straight away instead of waiting out NEWS_CACHE_MINUTES.
+    """
+    state = upcoming_events(force=force)
     return {
         "configured": configured(),
         "provider": provider_name(),
@@ -296,4 +314,6 @@ def status() -> Dict[str, Any]:
         "events": state.get("events") or [],
         "error": state.get("error") or "",
         "fetched_at": state.get("fetched_at"),
+        "raw_count": state.get("raw_count", 0),
+        "parsed_count": state.get("parsed_count", 0),
     }
