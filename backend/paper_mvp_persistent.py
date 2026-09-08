@@ -1374,12 +1374,16 @@ async def market_candles(pair: str = "GBP/USD", interval: str = "1h", count: int
     return {"pair": pair, "provider": "oanda" if oanda_configured() else "synthetic-fallback", "candles": get_candles(pair), "warning": "" if oanda_configured() else "Synthetic fallback data. Add OANDA practice credentials for live candle data."}
 
 @app.get("/api/calendar")
-async def calendar():
+async def calendar(refresh: bool = False):
     # Previously returned two invented "placeholder" events every day, dated
     # today and marked High impact, which read exactly like a real calendar
     # while nothing consulted it. Now it reports whatever the configured
     # provider actually says - and says plainly when there is no provider.
-    state = news_guard.status()
+    #
+    # ?refresh=1 skips the cache. Without it, checking a newly configured
+    # provider means waiting out NEWS_CACHE_MINUTES before the answer on
+    # screen reflects the key you just set.
+    state = news_guard.status(force=refresh)
     warnings = []
     if not state["configured"]:
         warnings.append(
@@ -1392,6 +1396,20 @@ async def calendar():
             + ("Trades are being allowed through anyway (NEWS_GUARD_FAIL_OPEN)."
                if state["fail_open"] else "New trades are blocked until it recovers.")
         )
+    # A feed that answers cleanly but in a shape this code cannot read is the
+    # dangerous case: no error, no events, and a calendar tab that looks like
+    # a quiet week. Say so instead.
+    if state["configured"] and not state["error"] and state["raw_count"] and not state["parsed_count"]:
+        warnings.append(
+            f"The provider returned {state['raw_count']} rows but none could be read - the feed's "
+            "field names or date format are not ones this app understands, so no blackout is in "
+            "force despite a provider being configured."
+        )
+    if state["configured"] and not state["error"] and not state["raw_count"]:
+        warnings.append(
+            "The provider answered but sent no events at all. That may be a quiet week, or the "
+            "endpoint may not be the calendar one - check it returns a list of releases."
+        )
     return {
         "provider": state["provider"],
         "generated_at": now(),
@@ -1400,6 +1418,8 @@ async def calendar():
         "blackout_minutes": state["blackout_minutes"],
         "blocked_impacts": state["impacts"],
         "fetched_at": state["fetched_at"],
+        "rows_received": state["raw_count"],
+        "rows_understood": state["parsed_count"],
         "warnings": warnings,
     }
 
