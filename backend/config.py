@@ -31,7 +31,11 @@ class Settings(BaseModel):
         max_daily_loss_pct: float = float(os.getenv("MAX_DAILY_LOSS_PCT", "1.5"))
         max_weekly_loss_pct: float = float(os.getenv("MAX_WEEKLY_LOSS_PCT", "4.0"))
         min_risk_reward: float = float(os.getenv("MIN_RISK_REWARD", "2.0"))
-        news_guard_minutes: int = int(os.getenv("NEWS_GUARD_MINUTES", "30"))
+        # The news blackout is configured in news_guard.py, not here. A
+        # news_guard_minutes setting used to sit on this line reading
+        # NEWS_GUARD_MINUTES, which nothing consumed - so setting it looked
+        # like it changed the blackout window and changed nothing. The real
+        # one is NEWS_BLACKOUT_MINUTES.
         trading_window: str = os.getenv("TRADING_WINDOW", "07:00-11:00 UTC (London)")
         min_confidence_score: int = int(os.getenv("MIN_CONFIDENCE_SCORE", "85"))
         confidence_gate_mode: str = os.getenv("CONFIDENCE_GATE_MODE", "strict").lower()
