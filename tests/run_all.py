@@ -36,6 +36,7 @@ DESCRIPTIONS = {
     "test_execution.py": "broker order placement and the live-trading lock",
     "test_performance.py": "drawdown, performance breakdowns and AI-vs-manual split",
     "test_newsguard.py": "the high-impact news blackout",
+    "test_agentwhy.py": "why the agent did not trade",
     "test_notify.py": "alerting and the run watchdog",
     "test_stale.py": "market-closed detection",
     "test_cronauth.py": "scheduled-job authentication and its error messages",

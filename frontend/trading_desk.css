@@ -429,3 +429,26 @@
   text-transform: uppercase;
   color: var(--text-muted, #8b9ab0);
 }
+
+/* ---- why the agent is not trading ---------------------------------------
+ * The agent control panel could say ON while opening nothing for days: its
+ * status only knew about gates that stop it looking, not about looking and
+ * refusing. This block carries the other half.
+ */
+.agent-why {
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--border, #2a3547);
+  border-left: 3px solid var(--accent, #f0b429);
+  border-radius: 8px;
+  background: var(--bg2, #161d29);
+}
+.agent-why-head { font-size: 13px; font-weight: 600; }
+.agent-why-list {
+  margin: 7px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-muted, #8b9ab0);
+  line-height: 1.6;
+}
+.agent-why-list strong { color: var(--text, #e6edf6); font-variant-numeric: tabular-nums; }

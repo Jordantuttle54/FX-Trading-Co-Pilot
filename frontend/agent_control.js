@@ -44,9 +44,20 @@
     if (c.respect_window && !data.in_window) blockers.push('Outside the London window');
     if (data.open_trades >= c.max_open_trades) blockers.push(`Holding ${data.open_trades}/${c.max_open_trades} trades`);
 
+    /* "ON - TRADING" used to show whenever the agent was enabled and no
+       account-level gate was tripped. But the gates here are only the ones
+       that stop it looking: switched off, kill switch, loss limit, window,
+       position count. An agent that looks at every pair and refuses every one
+       trips none of them, so the panel read ON - TRADING for days while
+       nothing was opened and nothing said why. The dry spell is the missing
+       half - what it has been doing with the runs since the last trade. */
+    const dry = runs.dry_spell || {};
+    const dryRuns = Number(dry.runs_since_trade || 0);
     const status = !c.enabled
       ? pill('AGENT OFF', 'neutral')
-      : blockers.length ? pill('ON - STANDING DOWN', 'warn') : pill('ON - TRADING', 'safe');
+      : blockers.length ? pill('ON - STANDING DOWN', 'warn')
+      : dryRuns >= 3 ? pill('ON - NOTHING QUALIFYING', 'warn')
+      : pill('ON - TRADING', 'safe');
 
     const last = runs.runs && runs.runs[0];
     const strategyBoxes = data.available_strategies.map(s => `
@@ -71,6 +82,16 @@
 
       ${blockers.length && c.enabled ? `<div class="small" style="margin-bottom:12px;color:var(--muted);">
         Standing down because: ${esc(blockers.join(' &middot; '))}</div>` : ''}
+
+      ${c.enabled && dry.headline ? `<div class="agent-why">
+        <div class="agent-why-head">${esc(dry.headline)}</div>
+        ${(dry.breakdown || []).length ? `<ul class="agent-why-list">${
+          dry.breakdown.map(b => `<li><strong>${esc(b.pairs)}</strong> &times; ${esc(b.reason)}</li>`).join('')
+        }</ul>` : ''}
+        ${(dry.halts || []).length ? `<ul class="agent-why-list">${
+          dry.halts.map(h => `<li><strong>${esc(h.runs)}</strong> run${h.runs === 1 ? '' : 's'} stood down: ${esc(h.reason)}</li>`).join('')
+        }</ul>` : ''}
+      </div>` : ''}
 
       <div class="wallet-actions" style="align-items:flex-end;">
         <div class="wallet-action-group">
