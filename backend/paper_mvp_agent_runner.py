@@ -161,7 +161,76 @@ def save_agent_config(user: str, updates: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+# Reasons are written for a human reading one pair's rejection. Grouping a
+# run's worth of them needs the shape of the reason, not its wording, so the
+# same class of refusal collapses into one line whatever the numbers in it.
+VERDICT_PATTERNS = (
+    ("calendar", "the economic calendar could not be reached"),
+    ("news blackout", "a high-impact release was inside the blackout window"),
+    ("confidence", "confidence was below the threshold"),
+    ("no setup", "no setup was present"),
+    ("no strategy returned", "no setup was present"),
+    ("spread", "the spread was too wide"),
+    ("closed for trading", "the market was closed"),
+    ("market looks closed", "the market was closed"),
+    ("how old", "the price feed age could not be established"),
+    ("already holding", "a position was already open on that pair"),
+    ("risk-reward", "the reward did not justify the risk"),
+    ("rr ", "the reward did not justify the risk"),
+)
+
+
+def _reason_class(reason: str) -> str:
+    text = str(reason or "").lower()
+    for needle, label in VERDICT_PATTERNS:
+        if needle in text:
+            return label
+    return "other reasons"
+
+
+def run_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """One plain answer to "why did this run not open anything".
+
+    The agent can be switched on, unblocked, scanning on schedule, and still
+    never trade - because every pair was refused on its own merits. From
+    outside, that is indistinguishable from a broken job: the status panel
+    reads ON, the runs tick along, nothing happens, and nobody can say why
+    without reading a list of eight rejection sentences. This turns that list
+    into a sentence and a count.
+    """
+    if payload.get("halted"):
+        return {"traded": False, "headline": str(payload.get("halt_reason") or "The agent stood down."),
+                "breakdown": [], "pairs_considered": 0}
+
+    opened = payload.get("opened") or []
+    if opened:
+        return {"traded": True,
+                "headline": f"Opened {len(opened)} trade{'s' if len(opened) != 1 else ''}.",
+                "breakdown": [], "pairs_considered": len(payload.get("skipped") or []) + len(opened)}
+
+    skipped = payload.get("skipped") or []
+    if not skipped:
+        return {"traded": False, "headline": "No pairs were scanned.", "breakdown": [], "pairs_considered": 0}
+
+    counts: Dict[str, int] = {}
+    for entry in skipped:
+        label = _reason_class(entry.get("reason"))
+        counts[label] = counts.get(label, 0) + 1
+    breakdown = sorted(
+        ({"reason": k, "pairs": v} for k, v in counts.items()),
+        key=lambda r: (-r["pairs"], r["reason"]),
+    )
+    top = breakdown[0]
+    headline = (
+        f"No trade: all {len(skipped)} pairs were refused"
+        if len(breakdown) == 1 or top["pairs"] == len(skipped)
+        else f"No trade: {len(skipped)} pairs refused"
+    ) + f", mostly because {top['reason']}."
+    return {"traded": False, "headline": headline, "breakdown": breakdown, "pairs_considered": len(skipped)}
+
+
 def record_run(user: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {**payload, "verdict": run_verdict(payload)}
     item = {"id": str(uuid.uuid4()), "user_name": user, "created_at": base.now(), **payload}
     if ensure_agent_tables():
         try:
@@ -548,6 +617,52 @@ async def write_agent_config(req: AgentConfigRequest, user: str = Depends(base.c
     return {"config": config, "saved": True}
 
 
+def dry_spell(runs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Why nothing has been opened lately, across runs rather than within one.
+
+    A single run saying "no setup" is normal. Forty of them in a row is a
+    question, and until now answering it meant opening the runs list and
+    reading rejection sentences one at a time. This rolls them up: how many
+    runs since the last trade, and what the agent spent them refusing.
+    """
+    since_trade = 0
+    counts: Dict[str, int] = {}
+    halts: Dict[str, int] = {}
+    for run in runs:
+        verdict = run.get("verdict") or run_verdict(run)
+        if verdict.get("traded"):
+            break
+        since_trade += 1
+        if run.get("halted"):
+            reason = str(run.get("halt_reason") or "The agent stood down.")
+            halts[reason] = halts.get(reason, 0) + 1
+            continue
+        for item in verdict.get("breakdown") or []:
+            counts[item["reason"]] = counts.get(item["reason"], 0) + int(item["pairs"])
+
+    if not since_trade:
+        return {"runs_since_trade": 0, "headline": "", "breakdown": [], "halts": []}
+
+    breakdown = sorted(({"reason": k, "pairs": v} for k, v in counts.items()),
+                       key=lambda r: (-r["pairs"], r["reason"]))
+    halt_list = sorted(({"reason": k, "runs": v} for k, v in halts.items()),
+                       key=lambda r: (-r["runs"], r["reason"]))
+
+    # A halt is the agent never getting as far as looking, which is a very
+    # different answer from looking and not liking what it saw. Lead with it.
+    if halt_list and halt_list[0]["runs"] >= since_trade / 2:
+        headline = (f"No trades in the last {since_trade} run"
+                    f"{'s' if since_trade != 1 else ''}: {halt_list[0]['reason']}")
+    elif breakdown:
+        headline = (f"No trades in the last {since_trade} run"
+                    f"{'s' if since_trade != 1 else ''}, mostly because "
+                    f"{breakdown[0]['reason']}.")
+    else:
+        headline = f"No trades in the last {since_trade} run{'s' if since_trade != 1 else ''}."
+    return {"runs_since_trade": since_trade, "headline": headline,
+            "breakdown": breakdown[:5], "halts": halt_list[:3]}
+
+
 @app.get("/api/agent/agent-runs")
 async def read_agent_runs(limit: int = Query(20, ge=1, le=100), user: str = Depends(base.current_user)):
     runs = list_runs(user, limit)
@@ -557,6 +672,8 @@ async def read_agent_runs(limit: int = Query(20, ge=1, le=100), user: str = Depe
         "last_run_at": last.get("created_at") if last else None,
         "last_opened_count": last.get("opened_count", 0) if last else 0,
         "enabled": get_agent_config(user)["enabled"],
+        "last_verdict": (last.get("verdict") or run_verdict(last)) if last else None,
+        "dry_spell": dry_spell(runs),
     }
 
 
